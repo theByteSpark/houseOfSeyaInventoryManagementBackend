@@ -39,6 +39,10 @@ export async function createCategoryHandler(req: Request, res: Response) {
   res.status(201).json(await inventoryService.createCategory(req.body));
 }
 
+export async function updateCategoryHandler(req: Request, res: Response) {
+  res.json(await inventoryService.updateCategory(requireParam(req, 'id'), req.body));
+}
+
 export async function deleteCategoryHandler(req: Request, res: Response) {
   await inventoryService.deleteCategory(requireParam(req, 'id'));
   res.status(204).send();

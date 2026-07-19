@@ -23,4 +23,5 @@ inventoryRoutes.get('/products/:id/movements', asyncHandler(inventoryController.
 
 inventoryRoutes.get('/categories', asyncHandler(inventoryController.listCategoriesHandler));
 inventoryRoutes.post('/categories', validateBody(categoryInputSchema), asyncHandler(inventoryController.createCategoryHandler));
+inventoryRoutes.patch('/categories/:id', validateBody(categoryInputSchema), asyncHandler(inventoryController.updateCategoryHandler));
 inventoryRoutes.delete('/categories/:id', asyncHandler(inventoryController.deleteCategoryHandler));

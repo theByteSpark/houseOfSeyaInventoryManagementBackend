@@ -157,6 +157,24 @@ export async function createCategory(input: CategoryInput) {
   return { id: category.id, name: category.name, productCount: 0 };
 }
 
+export async function updateCategory(id: string, input: CategoryInput) {
+  const current = await prisma.category.findUnique({ where: { id } });
+  if (!current) throw ApiError.notFound('Category not found.');
+
+  if (input.name !== current.name) {
+    const existing = await prisma.category.findUnique({ where: { name: input.name } });
+    if (existing) throw ApiError.conflict('A category with this name already exists.');
+  }
+
+  const category = await prisma.category.update({
+    where: { id },
+    data: { name: input.name },
+    include: { _count: { select: { products: true } } },
+  });
+
+  return { id: category.id, name: category.name, productCount: category._count.products };
+}
+
 export async function deleteCategory(id: string) {
   const category = await prisma.category.findUnique({
     where: { id },
