@@ -124,3 +124,7 @@ ALTER TABLE "InvoiceItem" ADD CONSTRAINT "InvoiceItem_invoiceId_fkey" FOREIGN KE
 
 -- AddForeignKey
 ALTER TABLE "InvoiceItem" ADD CONSTRAINT "InvoiceItem_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- Default admin user (email: admin@houseofseya.com, password: password123)
+INSERT INTO "User" ("id", "name", "email", "passwordHash", "role", "refreshToken", "createdAt", "updatedAt")
+VALUES (gen_random_uuid(), 'Seya Admin', 'admin@houseofseya.com', '$2b$10$1qSVT6wA0Le78ZIQSU3nwOjDkdubxp4smwrSYoivIQEfj/LCjh1sa', 'ADMIN', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
