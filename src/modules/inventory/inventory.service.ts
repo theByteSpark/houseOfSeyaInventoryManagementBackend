@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/config/db';
 import { ApiError } from '@/utils/apiError';
+import type { PaginatedResult, PaginationParams } from '@/utils/pagination';
 import type { CategoryInput, ProductInput, RestockInput } from './inventory.validation';
 
 function toProductDto(product: {
@@ -35,6 +36,52 @@ export async function listProducts() {
     orderBy: { createdAt: 'desc' },
   });
   return products.map(toProductDto);
+}
+
+export async function listProductsPaginated(
+  params: PaginationParams,
+  stockFilter: 'all' | 'low',
+): Promise<PaginatedResult<ReturnType<typeof toProductDto>>> {
+  const { page, pageSize, search, sortBy, sortDir } = params;
+
+  const searchFilter: Prisma.ProductWhereInput = search
+    ? {
+        OR: [
+          { name: { contains: search, mode: 'insensitive' } },
+          { category: { name: { contains: search, mode: 'insensitive' } } },
+        ],
+      }
+    : {};
+
+  const lowStockIds =
+    stockFilter === 'low'
+      ? (
+          await prisma.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Product" WHERE "quantityInStock" <= "reorderLevel"`
+        ).map((row) => row.id)
+      : null;
+
+  const where: Prisma.ProductWhereInput =
+    lowStockIds !== null ? { AND: [searchFilter, { id: { in: lowStockIds } }] } : searchFilter;
+
+  const orderBy: Prisma.ProductOrderByWithRelationInput =
+    sortBy === 'category'
+      ? { category: { name: sortDir } }
+      : sortBy === 'name' || sortBy === 'sku' || sortBy === 'unitPrice' || sortBy === 'quantityInStock' || sortBy === 'createdAt'
+        ? { [sortBy]: sortDir }
+        : { createdAt: 'desc' };
+
+  const [total, products] = await prisma.$transaction([
+    prisma.product.count({ where }),
+    prisma.product.findMany({
+      where,
+      include: { category: { select: { name: true } } },
+      orderBy,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+  ]);
+
+  return { data: products.map(toProductDto), total, page, pageSize };
 }
 
 export async function getProduct(id: string) {
@@ -141,6 +188,37 @@ export async function listStockMovements(productId: string) {
   });
 }
 
+export async function listCategoriesPaginated(
+  params: PaginationParams,
+): Promise<PaginatedResult<{ id: string; name: string; productCount: number }>> {
+  const { page, pageSize, search, sortBy, sortDir } = params;
+
+  const where: Prisma.CategoryWhereInput = search
+    ? { name: { contains: search, mode: 'insensitive' } }
+    : {};
+
+  const orderBy: Prisma.CategoryOrderByWithRelationInput =
+    sortBy === 'productCount' ? { products: { _count: sortDir } } : { name: sortDir ?? 'asc' };
+
+  const [total, categories] = await prisma.$transaction([
+    prisma.category.count({ where }),
+    prisma.category.findMany({
+      where,
+      include: { _count: { select: { products: true } } },
+      orderBy,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+  ]);
+
+  return {
+    data: categories.map((c) => ({ id: c.id, name: c.name, productCount: c._count.products })),
+    total,
+    page,
+    pageSize,
+  };
+}
+
 export async function listCategories() {
   const categories = await prisma.category.findMany({
     include: { _count: { select: { products: true } } },
@@ -188,7 +266,7 @@ export async function deleteCategory(id: string) {
   await prisma.category.delete({ where: { id } });
 }
 
-// Used by the invoices module inside its own transaction to deduct stock on issue.
+// Used by the sales module inside its own transaction to deduct stock on issue.
 export function deductStockInTransaction(
   tx: Prisma.TransactionClient,
   productId: string,

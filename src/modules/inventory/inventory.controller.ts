@@ -1,9 +1,20 @@
 import type { Request, Response } from 'express';
 import { requireParam } from '@/utils/params';
+import { isPaginationRequested, parsePaginationParams } from '@/utils/pagination';
 import * as inventoryService from './inventory.service';
 
-export async function listProductsHandler(_req: Request, res: Response) {
-  res.json(await inventoryService.listProducts());
+const PRODUCT_SORTABLE_FIELDS = ['name', 'sku', 'category', 'unitPrice', 'quantityInStock', 'createdAt'];
+const CATEGORY_SORTABLE_FIELDS = ['name', 'productCount'];
+
+export async function listProductsHandler(req: Request, res: Response) {
+  if (!isPaginationRequested(req)) {
+    res.json(await inventoryService.listProducts());
+    return;
+  }
+
+  const params = parsePaginationParams(req, PRODUCT_SORTABLE_FIELDS);
+  const stockFilter = req.query.stockFilter === 'low' ? 'low' : 'all';
+  res.json(await inventoryService.listProductsPaginated(params, stockFilter));
 }
 
 export async function getProductHandler(req: Request, res: Response) {
@@ -31,8 +42,14 @@ export async function listStockMovementsHandler(req: Request, res: Response) {
   res.json(await inventoryService.listStockMovements(requireParam(req, 'id')));
 }
 
-export async function listCategoriesHandler(_req: Request, res: Response) {
-  res.json(await inventoryService.listCategories());
+export async function listCategoriesHandler(req: Request, res: Response) {
+  if (!isPaginationRequested(req)) {
+    res.json(await inventoryService.listCategories());
+    return;
+  }
+
+  const params = parsePaginationParams(req, CATEGORY_SORTABLE_FIELDS);
+  res.json(await inventoryService.listCategoriesPaginated(params));
 }
 
 export async function createCategoryHandler(req: Request, res: Response) {

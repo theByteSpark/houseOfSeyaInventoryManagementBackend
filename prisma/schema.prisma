@@ -13,25 +13,38 @@ enum Role {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  name         String
-  email        String   @unique
-  passwordHash String
-  role         Role     @default(STAFF)
-  refreshToken String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                  String               @id @default(uuid())
+  name                String
+  email               String               @unique
+  passwordHash        String
+  role                Role                 @default(STAFF)
+  refreshToken        String?
+  passwordResetTokens PasswordResetToken[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+model PasswordResetToken {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  codeHash   String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model Customer {
-  id        String    @id @default(uuid())
+  id        String   @id @default(uuid())
   name      String
   email     String?
   phone     String?
   address   String?
-  invoices  Invoice[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  sales     Sale[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Category {
@@ -50,7 +63,7 @@ model Product {
   reorderLevel    Int             @default(0)
   categoryId      String?
   category        Category?       @relation(fields: [categoryId], references: [id])
-  invoiceItems    InvoiceItem[]
+  saleItems       SaleItem[]
   stockMovements  StockMovement[]
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
@@ -72,32 +85,32 @@ model StockMovement {
   createdAt DateTime          @default(now())
 }
 
-enum InvoiceStatus {
+enum SaleStatus {
   DRAFT
   ISSUED
   PAID
   CANCELLED
 }
 
-model Invoice {
-  id            String        @id @default(uuid())
-  invoiceNumber String        @unique
+model Sale {
+  id            String     @id @default(uuid())
+  saleNumber    String     @unique
   customerId    String
-  customer      Customer      @relation(fields: [customerId], references: [id])
-  status        InvoiceStatus @default(DRAFT)
-  items         InvoiceItem[]
-  subtotal      Decimal       @db.Decimal(10, 2)
-  tax           Decimal       @db.Decimal(10, 2) @default(0)
-  total         Decimal       @db.Decimal(10, 2)
+  customer      Customer   @relation(fields: [customerId], references: [id])
+  status        SaleStatus @default(DRAFT)
+  items         SaleItem[]
+  subtotal      Decimal    @db.Decimal(10, 2)
+  tax           Decimal    @db.Decimal(10, 2) @default(0)
+  total         Decimal    @db.Decimal(10, 2)
   issuedAt      DateTime?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 }
 
-model InvoiceItem {
+model SaleItem {
   id        String  @id @default(uuid())
-  invoiceId String
-  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+  saleId    String
+  sale      Sale    @relation(fields: [saleId], references: [id])
   productId String
   product   Product @relation(fields: [productId], references: [id])
   quantity  Int

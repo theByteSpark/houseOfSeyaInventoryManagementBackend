@@ -15,11 +15,6 @@ function setRefreshCookie(res: Response, token: string) {
   });
 }
 
-export async function registerHandler(req: Request, res: Response) {
-  const user = await authService.register(req.body);
-  res.status(201).json(user);
-}
-
 export async function loginHandler(req: Request, res: Response) {
   const { user, accessToken, refreshToken } = await authService.login(req.body);
   setRefreshCookie(res, refreshToken);
@@ -44,4 +39,19 @@ export async function logoutHandler(req: Request, res: Response) {
 export async function meHandler(req: Request, res: Response) {
   const user = await authService.getCurrentUser(req.user!.id);
   res.json(user);
+}
+
+export async function forgotPasswordHandler(req: Request, res: Response) {
+  await authService.forgotPassword(req.body);
+  res.status(204).send();
+}
+
+export async function verifyResetCodeHandler(req: Request, res: Response) {
+  const result = await authService.verifyResetCode(req.body);
+  res.json(result);
+}
+
+export async function resetPasswordHandler(req: Request, res: Response) {
+  await authService.resetPassword(req.body);
+  res.status(204).send();
 }

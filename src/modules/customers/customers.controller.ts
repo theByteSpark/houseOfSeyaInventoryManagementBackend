@@ -1,9 +1,18 @@
 import type { Request, Response } from 'express';
 import { requireParam } from '@/utils/params';
+import { isPaginationRequested, parsePaginationParams } from '@/utils/pagination';
 import * as customersService from './customers.service';
 
-export async function listCustomersHandler(_req: Request, res: Response) {
-  res.json(await customersService.listCustomers());
+const SORTABLE_FIELDS = ['name', 'email', 'phone', 'totalSales', 'createdAt'];
+
+export async function listCustomersHandler(req: Request, res: Response) {
+  if (!isPaginationRequested(req)) {
+    res.json(await customersService.listCustomers());
+    return;
+  }
+
+  const params = parsePaginationParams(req, SORTABLE_FIELDS);
+  res.json(await customersService.listCustomersPaginated(params));
 }
 
 export async function getCustomerHandler(req: Request, res: Response) {

@@ -6,6 +6,10 @@ export async function listUsersHandler(_req: Request, res: Response) {
   res.json(await usersService.listUsers());
 }
 
+export async function createUserHandler(req: Request, res: Response) {
+  res.status(201).json(await usersService.createUser(req.body));
+}
+
 export async function getUserHandler(req: Request, res: Response) {
   res.json(await usersService.getUser(requireParam(req, 'id')));
 }

@@ -22,3 +22,21 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
 export function verifyRefreshToken(token: string): { sub: string } {
   return jwt.verify(token, env.JWT_REFRESH_SECRET) as { sub: string };
 }
+
+export interface PasswordResetTokenPayload {
+  sub: string;
+  purpose: 'password-reset';
+}
+
+export function signPasswordResetToken(userId: string): string {
+  const payload: PasswordResetTokenPayload = { sub: userId, purpose: 'password-reset' };
+  return jwt.sign(payload, env.JWT_ACCESS_SECRET, { expiresIn: '10m' });
+}
+
+export function verifyPasswordResetToken(token: string): PasswordResetTokenPayload {
+  const payload = jwt.verify(token, env.JWT_ACCESS_SECRET) as PasswordResetTokenPayload;
+  if (payload.purpose !== 'password-reset') {
+    throw new Error('Invalid token purpose.');
+  }
+  return payload;
+}

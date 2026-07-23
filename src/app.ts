@@ -7,7 +7,7 @@ import { authRoutes } from '@/modules/auth/auth.routes';
 import { usersRoutes } from '@/modules/users/users.routes';
 import { customersRoutes } from '@/modules/customers/customers.routes';
 import { inventoryRoutes } from '@/modules/inventory/inventory.routes';
-import { invoicesRoutes } from '@/modules/invoices/invoices.routes';
+import { salesRoutes } from '@/modules/sales/sales.routes';
 
 export const app = express();
 
@@ -21,7 +21,7 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', usersRoutes);
 app.use('/api/v1/customers', customersRoutes);
 app.use('/api/v1/inventory', inventoryRoutes);
-app.use('/api/v1/invoices', invoicesRoutes);
+app.use('/api/v1/sales', salesRoutes);
 
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 
