@@ -74,6 +74,7 @@ model Product {
   subcategoryId   String?
   subcategory     Subcategory?    @relation(fields: [subcategoryId], references: [id])
   saleItems       SaleItem[]
+  purchaseItems   PurchaseItem[]
   stockMovements  StockMovement[]
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
@@ -126,4 +127,49 @@ model SaleItem {
   quantity  Int
   unitPrice Decimal @db.Decimal(10, 2)
   lineTotal Decimal @db.Decimal(10, 2)
+}
+
+model Vendor {
+  id            String          @id @default(uuid())
+  companyName   String
+  contactPerson String?
+  email         String?
+  phone         String?
+  address       String?
+  purchases     Purchase[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+}
+
+enum PurchaseStatus {
+  DRAFT
+  ORDERED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+model Purchase {
+  id            String         @id @default(uuid())
+  purchaseNumber String        @unique
+  vendorId      String
+  vendor        Vendor         @relation(fields: [vendorId], references: [id])
+  status        PurchaseStatus @default(DRAFT)
+  items         PurchaseItem[]
+  orderedAt     DateTime?
+  receivedAt    DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model PurchaseItem {
+  id               String   @id @default(uuid())
+  purchaseId       String
+  purchase         Purchase @relation(fields: [purchaseId], references: [id])
+  productId        String
+  product          Product  @relation(fields: [productId], references: [id])
+  quantity         Int
+  receivedQuantity Int      @default(0)
+  unitCost         Decimal  @db.Decimal(10, 2)
+  lineTotal        Decimal  @db.Decimal(10, 2)
 }

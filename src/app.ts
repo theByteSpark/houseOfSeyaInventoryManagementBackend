@@ -8,6 +8,9 @@ import { usersRoutes } from '@/modules/users/users.routes';
 import { customersRoutes } from '@/modules/customers/customers.routes';
 import { inventoryRoutes } from '@/modules/inventory/inventory.routes';
 import { salesRoutes } from '@/modules/sales/sales.routes';
+import { vendorsRoutes } from '@/modules/vendors/vendors.routes';
+import { purchasesRoutes } from '@/modules/purchases/purchases.routes';
+import { reportsRoutes } from '@/modules/reports/reports.routes';
 
 export const app = express();
 
@@ -22,6 +25,9 @@ app.use('/api/v1/users', usersRoutes);
 app.use('/api/v1/customers', customersRoutes);
 app.use('/api/v1/inventory', inventoryRoutes);
 app.use('/api/v1/sales', salesRoutes);
+app.use('/api/v1/vendors', vendorsRoutes);
+app.use('/api/v1/purchases', purchasesRoutes);
+app.use('/api/v1/reports', reportsRoutes);
 
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 
