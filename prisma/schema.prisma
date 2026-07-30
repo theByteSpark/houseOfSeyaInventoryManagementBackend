@@ -48,9 +48,19 @@ model Customer {
 }
 
 model Category {
-  id       String    @id @default(uuid())
-  name     String    @unique
-  products Product[]
+  id            String        @id @default(uuid())
+  name          String        @unique
+  subcategories Subcategory[]
+}
+
+model Subcategory {
+  id         String    @id @default(uuid())
+  name       String
+  categoryId String
+  category   Category  @relation(fields: [categoryId], references: [id])
+  products   Product[]
+
+  @@unique([categoryId, name])
 }
 
 model Product {
@@ -61,8 +71,8 @@ model Product {
   unitPrice       Decimal         @db.Decimal(10, 2)
   quantityInStock Int             @default(0)
   reorderLevel    Int             @default(0)
-  categoryId      String?
-  category        Category?       @relation(fields: [categoryId], references: [id])
+  subcategoryId   String?
+  subcategory     Subcategory?    @relation(fields: [subcategoryId], references: [id])
   saleItems       SaleItem[]
   stockMovements  StockMovement[]
   createdAt       DateTime        @default(now())

@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/config/db';
 import { ApiError } from '@/utils/apiError';
 import type { PaginatedResult, PaginationParams } from '@/utils/pagination';
-import type { CategoryInput, ProductInput, RestockInput } from './inventory.validation';
+import type { CategoryInput, ProductInput, RestockInput, SubcategoryInput } from './inventory.validation';
 
 function toProductDto(product: {
   id: string;
@@ -12,8 +12,8 @@ function toProductDto(product: {
   unitPrice: Prisma.Decimal;
   quantityInStock: number;
   reorderLevel: number;
-  categoryId: string | null;
-  category: { name: string } | null;
+  subcategoryId: string | null;
+  subcategory: { name: string; category: { id: string; name: string } } | null;
   createdAt: Date;
 }) {
   return {
@@ -24,15 +24,21 @@ function toProductDto(product: {
     unitPrice: Number(product.unitPrice),
     quantityInStock: product.quantityInStock,
     reorderLevel: product.reorderLevel,
-    categoryId: product.categoryId,
-    categoryName: product.category?.name ?? null,
+    subcategoryId: product.subcategoryId,
+    subcategoryName: product.subcategory?.name ?? null,
+    categoryId: product.subcategory?.category.id ?? null,
+    categoryName: product.subcategory?.category.name ?? null,
     createdAt: product.createdAt,
   };
 }
 
+const PRODUCT_INCLUDE = {
+  subcategory: { include: { category: { select: { id: true, name: true } } } },
+} satisfies Prisma.ProductInclude;
+
 export async function listProducts() {
   const products = await prisma.product.findMany({
-    include: { category: { select: { name: true } } },
+    include: PRODUCT_INCLUDE,
     orderBy: { createdAt: 'desc' },
   });
   return products.map(toProductDto);
@@ -48,7 +54,8 @@ export async function listProductsPaginated(
     ? {
         OR: [
           { name: { contains: search, mode: 'insensitive' } },
-          { category: { name: { contains: search, mode: 'insensitive' } } },
+          { subcategory: { name: { contains: search, mode: 'insensitive' } } },
+          { subcategory: { category: { name: { contains: search, mode: 'insensitive' } } } },
         ],
       }
     : {};
@@ -64,8 +71,8 @@ export async function listProductsPaginated(
     lowStockIds !== null ? { AND: [searchFilter, { id: { in: lowStockIds } }] } : searchFilter;
 
   const orderBy: Prisma.ProductOrderByWithRelationInput =
-    sortBy === 'category'
-      ? { category: { name: sortDir } }
+    sortBy === 'subcategory'
+      ? { subcategory: { name: sortDir } }
       : sortBy === 'name' || sortBy === 'sku' || sortBy === 'unitPrice' || sortBy === 'quantityInStock' || sortBy === 'createdAt'
         ? { [sortBy]: sortDir }
         : { createdAt: 'desc' };
@@ -74,7 +81,7 @@ export async function listProductsPaginated(
     prisma.product.count({ where }),
     prisma.product.findMany({
       where,
-      include: { category: { select: { name: true } } },
+      include: PRODUCT_INCLUDE,
       orderBy,
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -87,7 +94,7 @@ export async function listProductsPaginated(
 export async function getProduct(id: string) {
   const product = await prisma.product.findUnique({
     where: { id },
-    include: { category: { select: { name: true } } },
+    include: PRODUCT_INCLUDE,
   });
   if (!product) throw ApiError.notFound('Product not found.');
   return toProductDto(product);
@@ -105,9 +112,9 @@ export async function createProduct(input: ProductInput) {
       unitPrice: input.unitPrice,
       quantityInStock: input.quantityInStock,
       reorderLevel: input.reorderLevel,
-      categoryId: input.categoryId || null,
+      subcategoryId: input.subcategoryId || null,
     },
-    include: { category: { select: { name: true } } },
+    include: PRODUCT_INCLUDE,
   });
 
   if (input.quantityInStock > 0) {
@@ -141,9 +148,9 @@ export async function updateProduct(id: string, input: ProductInput) {
       description: input.description || null,
       unitPrice: input.unitPrice,
       reorderLevel: input.reorderLevel,
-      categoryId: input.categoryId || null,
+      subcategoryId: input.subcategoryId || null,
     },
-    include: { category: { select: { name: true } } },
+    include: PRODUCT_INCLUDE,
   });
 
   return toProductDto(product);
@@ -163,7 +170,7 @@ export async function restockProduct(id: string, input: RestockInput) {
     prisma.product.update({
       where: { id },
       data: { quantityInStock: { increment: input.quantity } },
-      include: { category: { select: { name: true } } },
+      include: PRODUCT_INCLUDE,
     }),
     prisma.stockMovement.create({
       data: {
@@ -190,7 +197,7 @@ export async function listStockMovements(productId: string) {
 
 export async function listCategoriesPaginated(
   params: PaginationParams,
-): Promise<PaginatedResult<{ id: string; name: string; productCount: number }>> {
+): Promise<PaginatedResult<{ id: string; name: string; subcategoryCount: number }>> {
   const { page, pageSize, search, sortBy, sortDir } = params;
 
   const where: Prisma.CategoryWhereInput = search
@@ -198,13 +205,13 @@ export async function listCategoriesPaginated(
     : {};
 
   const orderBy: Prisma.CategoryOrderByWithRelationInput =
-    sortBy === 'productCount' ? { products: { _count: sortDir } } : { name: sortDir ?? 'asc' };
+    sortBy === 'subcategoryCount' ? { subcategories: { _count: sortDir } } : { name: sortDir ?? 'asc' };
 
   const [total, categories] = await prisma.$transaction([
     prisma.category.count({ where }),
     prisma.category.findMany({
       where,
-      include: { _count: { select: { products: true } } },
+      include: { _count: { select: { subcategories: true } } },
       orderBy,
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -212,7 +219,7 @@ export async function listCategoriesPaginated(
   ]);
 
   return {
-    data: categories.map((c) => ({ id: c.id, name: c.name, productCount: c._count.products })),
+    data: categories.map((c) => ({ id: c.id, name: c.name, subcategoryCount: c._count.subcategories })),
     total,
     page,
     pageSize,
@@ -221,10 +228,10 @@ export async function listCategoriesPaginated(
 
 export async function listCategories() {
   const categories = await prisma.category.findMany({
-    include: { _count: { select: { products: true } } },
+    include: { _count: { select: { subcategories: true } } },
     orderBy: { name: 'asc' },
   });
-  return categories.map((c) => ({ id: c.id, name: c.name, productCount: c._count.products }));
+  return categories.map((c) => ({ id: c.id, name: c.name, subcategoryCount: c._count.subcategories }));
 }
 
 export async function createCategory(input: CategoryInput) {
@@ -232,7 +239,7 @@ export async function createCategory(input: CategoryInput) {
   if (existing) throw ApiError.conflict('A category with this name already exists.');
 
   const category = await prisma.category.create({ data: { name: input.name } });
-  return { id: category.id, name: category.name, productCount: 0 };
+  return { id: category.id, name: category.name, subcategoryCount: 0 };
 }
 
 export async function updateCategory(id: string, input: CategoryInput) {
@@ -247,23 +254,144 @@ export async function updateCategory(id: string, input: CategoryInput) {
   const category = await prisma.category.update({
     where: { id },
     data: { name: input.name },
-    include: { _count: { select: { products: true } } },
+    include: { _count: { select: { subcategories: true } } },
   });
 
-  return { id: category.id, name: category.name, productCount: category._count.products };
+  return { id: category.id, name: category.name, subcategoryCount: category._count.subcategories };
 }
 
 export async function deleteCategory(id: string) {
   const category = await prisma.category.findUnique({
     where: { id },
-    include: { _count: { select: { products: true } } },
+    include: { _count: { select: { subcategories: true } } },
   });
   if (!category) throw ApiError.notFound('Category not found.');
-  if (category._count.products > 0) {
-    throw ApiError.badRequest('Cannot delete a category that still has products assigned to it.');
+  if (category._count.subcategories > 0) {
+    throw ApiError.badRequest('Cannot delete a category that still has subcategories.');
   }
 
   await prisma.category.delete({ where: { id } });
+}
+
+export async function listSubcategoriesPaginated(
+  params: PaginationParams,
+  categoryId?: string,
+): Promise<PaginatedResult<{ id: string; name: string; categoryId: string; categoryName: string; productCount: number }>> {
+  const { page, pageSize, search, sortBy, sortDir } = params;
+
+  const searchFilter: Prisma.SubcategoryWhereInput = search
+    ? {
+        OR: [
+          { name: { contains: search, mode: 'insensitive' } },
+          { category: { name: { contains: search, mode: 'insensitive' } } },
+        ],
+      }
+    : {};
+
+  const where: Prisma.SubcategoryWhereInput = categoryId ? { AND: [searchFilter, { categoryId }] } : searchFilter;
+
+  const orderBy: Prisma.SubcategoryOrderByWithRelationInput =
+    sortBy === 'category'
+      ? { category: { name: sortDir } }
+      : sortBy === 'productCount'
+        ? { products: { _count: sortDir } }
+        : { name: sortDir ?? 'asc' };
+
+  const [total, subcategories] = await prisma.$transaction([
+    prisma.subcategory.count({ where }),
+    prisma.subcategory.findMany({
+      where,
+      include: { category: { select: { name: true } }, _count: { select: { products: true } } },
+      orderBy,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+  ]);
+
+  return {
+    data: subcategories.map((s) => ({
+      id: s.id,
+      name: s.name,
+      categoryId: s.categoryId,
+      categoryName: s.category.name,
+      productCount: s._count.products,
+    })),
+    total,
+    page,
+    pageSize,
+  };
+}
+
+export async function listSubcategories(categoryId?: string) {
+  const subcategories = await prisma.subcategory.findMany({
+    where: categoryId ? { categoryId } : undefined,
+    include: { category: { select: { name: true } }, _count: { select: { products: true } } },
+    orderBy: { name: 'asc' },
+  });
+  return subcategories.map((s) => ({
+    id: s.id,
+    name: s.name,
+    categoryId: s.categoryId,
+    categoryName: s.category.name,
+    productCount: s._count.products,
+  }));
+}
+
+export async function createSubcategory(input: SubcategoryInput) {
+  const category = await prisma.category.findUnique({ where: { id: input.categoryId } });
+  if (!category) throw ApiError.notFound('Category not found.');
+
+  const existing = await prisma.subcategory.findUnique({
+    where: { categoryId_name: { categoryId: input.categoryId, name: input.name } },
+  });
+  if (existing) throw ApiError.conflict('A subcategory with this name already exists in this category.');
+
+  const subcategory = await prisma.subcategory.create({
+    data: { name: input.name, categoryId: input.categoryId },
+  });
+  return { id: subcategory.id, name: subcategory.name, categoryId: subcategory.categoryId, categoryName: category.name, productCount: 0 };
+}
+
+export async function updateSubcategory(id: string, input: SubcategoryInput) {
+  const current = await prisma.subcategory.findUnique({ where: { id } });
+  if (!current) throw ApiError.notFound('Subcategory not found.');
+
+  const category = await prisma.category.findUnique({ where: { id: input.categoryId } });
+  if (!category) throw ApiError.notFound('Category not found.');
+
+  if (input.name !== current.name || input.categoryId !== current.categoryId) {
+    const existing = await prisma.subcategory.findUnique({
+      where: { categoryId_name: { categoryId: input.categoryId, name: input.name } },
+    });
+    if (existing) throw ApiError.conflict('A subcategory with this name already exists in this category.');
+  }
+
+  const subcategory = await prisma.subcategory.update({
+    where: { id },
+    data: { name: input.name, categoryId: input.categoryId },
+    include: { _count: { select: { products: true } } },
+  });
+
+  return {
+    id: subcategory.id,
+    name: subcategory.name,
+    categoryId: subcategory.categoryId,
+    categoryName: category.name,
+    productCount: subcategory._count.products,
+  };
+}
+
+export async function deleteSubcategory(id: string) {
+  const subcategory = await prisma.subcategory.findUnique({
+    where: { id },
+    include: { _count: { select: { products: true } } },
+  });
+  if (!subcategory) throw ApiError.notFound('Subcategory not found.');
+  if (subcategory._count.products > 0) {
+    throw ApiError.badRequest('Cannot delete a subcategory that still has products assigned to it.');
+  }
+
+  await prisma.subcategory.delete({ where: { id } });
 }
 
 // Used by the sales module inside its own transaction to deduct stock on issue.
