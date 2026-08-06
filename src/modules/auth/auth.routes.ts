@@ -3,12 +3,18 @@ import { asyncHandler } from '@/utils/asyncHandler';
 import { authenticate } from '@/middleware/authenticate';
 import { validateBody } from '@/middleware/validate';
 import * as authController from './auth.controller';
-import { forgotPasswordSchema, loginSchema, resetPasswordSchema, verifyResetCodeSchema } from './auth.validation';
+import {
+  forgotPasswordSchema,
+  loginSchema,
+  refreshSchema,
+  resetPasswordSchema,
+  verifyResetCodeSchema,
+} from './auth.validation';
 
 export const authRoutes = Router();
 
 authRoutes.post('/login', validateBody(loginSchema), asyncHandler(authController.loginHandler));
-authRoutes.post('/refresh', asyncHandler(authController.refreshHandler));
+authRoutes.post('/refresh', validateBody(refreshSchema), asyncHandler(authController.refreshHandler));
 authRoutes.post('/logout', authenticate, asyncHandler(authController.logoutHandler));
 authRoutes.get('/me', authenticate, asyncHandler(authController.meHandler));
 
