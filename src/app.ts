@@ -14,7 +14,23 @@ import { reportsRoutes } from '@/modules/reports/reports.routes';
 
 export const app = express();
 
-app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
+const allowedOrigins = [
+  env.CORS_ORIGIN,
+  ...(env.CORS_ORIGINS ? env.CORS_ORIGINS.split(',').map((o) => o.trim()) : []),
+];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`Origin ${origin} not allowed by CORS`));
+      }
+    },
+    credentials: true,
+  }),
+);
 app.use(express.json());
 app.use(cookieParser());
 
