@@ -11,7 +11,7 @@ import {
 } from './inventory.validation';
 
 export const inventoryRoutes = Router();
-
+// paragon resin
 inventoryRoutes.use(authenticate);
 
 inventoryRoutes.get('/products', asyncHandler(inventoryController.listProductsHandler));
