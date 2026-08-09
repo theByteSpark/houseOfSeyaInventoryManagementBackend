@@ -9,6 +9,7 @@ export const purchaseLineSchema = z.object({
 export const purchaseInputSchema = z.object({
   vendorId: z.string().min(1),
   items: z.array(purchaseLineSchema).min(1),
+  warehouseId: z.string().optional(),
 });
 
 export type PurchaseInput = z.infer<typeof purchaseInputSchema>;

@@ -1,33 +1,39 @@
 import type { Request, Response } from 'express';
 import { requireParam } from '@/utils/params';
 import { isPaginationRequested, parsePaginationParams } from '@/utils/pagination';
+import { ApiError } from '@/utils/apiError';
 import * as inventoryService from './inventory.service';
 
-const PRODUCT_SORTABLE_FIELDS = ['name', 'sku', 'subcategory', 'unitPrice', 'quantityInStock', 'createdAt'];
-const CATEGORY_SORTABLE_FIELDS = ['name', 'subcategoryCount'];
-const SUBCATEGORY_SORTABLE_FIELDS = ['name', 'category', 'productCount'];
+const PRODUCT_SORTABLE_FIELDS = ['name', 'sku', 'category', 'unitPrice', 'createdAt'];
+const CATEGORY_SORTABLE_FIELDS = ['name', 'productCount'];
+
+function requireUser(req: Request) {
+  if (!req.user) throw ApiError.unauthorized();
+  return req.user;
+}
 
 export async function listProductsHandler(req: Request, res: Response) {
+  const user = requireUser(req);
   if (!isPaginationRequested(req)) {
-    res.json(await inventoryService.listProducts());
+    res.json(await inventoryService.listProducts(user));
     return;
   }
 
   const params = parsePaginationParams(req, PRODUCT_SORTABLE_FIELDS);
   const stockFilter = req.query.stockFilter === 'low' ? 'low' : 'all';
-  res.json(await inventoryService.listProductsPaginated(params, stockFilter));
+  res.json(await inventoryService.listProductsPaginated(user, params, stockFilter));
 }
 
 export async function getProductHandler(req: Request, res: Response) {
-  res.json(await inventoryService.getProduct(requireParam(req, 'id')));
+  res.json(await inventoryService.getProduct(requireUser(req), requireParam(req, 'id')));
 }
 
 export async function createProductHandler(req: Request, res: Response) {
-  res.status(201).json(await inventoryService.createProduct(req.body));
+  res.status(201).json(await inventoryService.createProduct(requireUser(req), req.body));
 }
 
 export async function updateProductHandler(req: Request, res: Response) {
-  res.json(await inventoryService.updateProduct(requireParam(req, 'id'), req.body));
+  res.json(await inventoryService.updateProduct(requireUser(req), requireParam(req, 'id'), req.body));
 }
 
 export async function deleteProductHandler(req: Request, res: Response) {
@@ -36,11 +42,11 @@ export async function deleteProductHandler(req: Request, res: Response) {
 }
 
 export async function restockProductHandler(req: Request, res: Response) {
-  res.json(await inventoryService.restockProduct(requireParam(req, 'id'), req.body));
+  res.json(await inventoryService.restockProduct(requireUser(req), requireParam(req, 'id'), req.body));
 }
 
 export async function listStockMovementsHandler(req: Request, res: Response) {
-  res.json(await inventoryService.listStockMovements(requireParam(req, 'id')));
+  res.json(await inventoryService.listStockMovements(requireUser(req), requireParam(req, 'id')));
 }
 
 export async function listCategoriesHandler(req: Request, res: Response) {
@@ -63,30 +69,5 @@ export async function updateCategoryHandler(req: Request, res: Response) {
 
 export async function deleteCategoryHandler(req: Request, res: Response) {
   await inventoryService.deleteCategory(requireParam(req, 'id'));
-  res.status(204).send();
-}
-
-export async function listSubcategoriesHandler(req: Request, res: Response) {
-  const categoryId = typeof req.query.categoryId === 'string' ? req.query.categoryId : undefined;
-
-  if (!isPaginationRequested(req)) {
-    res.json(await inventoryService.listSubcategories(categoryId));
-    return;
-  }
-
-  const params = parsePaginationParams(req, SUBCATEGORY_SORTABLE_FIELDS);
-  res.json(await inventoryService.listSubcategoriesPaginated(params, categoryId));
-}
-
-export async function createSubcategoryHandler(req: Request, res: Response) {
-  res.status(201).json(await inventoryService.createSubcategory(req.body));
-}
-
-export async function updateSubcategoryHandler(req: Request, res: Response) {
-  res.json(await inventoryService.updateSubcategory(requireParam(req, 'id'), req.body));
-}
-
-export async function deleteSubcategoryHandler(req: Request, res: Response) {
-  await inventoryService.deleteSubcategory(requireParam(req, 'id'));
   res.status(204).send();
 }

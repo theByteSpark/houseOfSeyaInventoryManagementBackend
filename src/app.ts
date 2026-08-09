@@ -11,6 +11,9 @@ import { salesRoutes } from '@/modules/sales/sales.routes';
 import { vendorsRoutes } from '@/modules/vendors/vendors.routes';
 import { purchasesRoutes } from '@/modules/purchases/purchases.routes';
 import { reportsRoutes } from '@/modules/reports/reports.routes';
+import { warehousesRoutes } from '@/modules/warehouses/warehouses.routes';
+import { importExportRoutes } from '@/modules/import-export/import-export.routes';
+import { notificationsRoutes } from '@/modules/notifications/notifications.routes';
 
 export const app = express();
 
@@ -28,6 +31,7 @@ app.use(
         callback(new Error(`Origin ${origin} not allowed by CORS`));
       }
     },
+    credentials: true,
   }),
 );
 app.use(express.json());
@@ -43,6 +47,9 @@ app.use('/api/v1/sales', salesRoutes);
 app.use('/api/v1/vendors', vendorsRoutes);
 app.use('/api/v1/purchases', purchasesRoutes);
 app.use('/api/v1/reports', reportsRoutes);
+app.use('/api/v1/warehouses', warehousesRoutes);
+app.use('/api/v1/import', importExportRoutes);
+app.use('/api/v1/notifications', notificationsRoutes);
 
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 

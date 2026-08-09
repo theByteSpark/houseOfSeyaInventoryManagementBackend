@@ -8,8 +8,10 @@ datasource db {
 }
 
 enum Role {
+  USER
   ADMIN
-  STAFF
+  COMPANY_ADMIN
+  SUPER_ADMIN
 }
 
 model User {
@@ -17,9 +19,11 @@ model User {
   name                String
   email               String               @unique
   passwordHash        String
-  role                Role                 @default(STAFF)
+  role                Role                 @default(USER)
   refreshToken        String?
   passwordResetTokens PasswordResetToken[]
+  notificationReads   NotificationRead[]
+  warehouseMapping    UserWarehouse?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 }
@@ -36,6 +40,33 @@ model PasswordResetToken {
   @@index([userId])
 }
 
+model Warehouse {
+  id            String          @id @default(uuid())
+  name          String          @unique
+  code          String?         @unique
+  address       String?
+  isActive      Boolean         @default(true)
+  userMappings  UserWarehouse[]
+  stocks        ProductStock[]
+  movements     StockMovement[]
+  sales         Sale[]
+  purchases     Purchase[]
+  notifications Notification[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+}
+
+model UserWarehouse {
+  id          String    @id @default(uuid())
+  userId      String    @unique
+  user        User      @relation(fields: [userId], references: [id])
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  createdAt   DateTime  @default(now())
+
+  @@index([warehouseId])
+}
+
 model Customer {
   id        String   @id @default(uuid())
   name      String
@@ -48,36 +79,40 @@ model Customer {
 }
 
 model Category {
-  id            String        @id @default(uuid())
-  name          String        @unique
-  subcategories Subcategory[]
-}
-
-model Subcategory {
-  id         String    @id @default(uuid())
-  name       String
-  categoryId String
-  category   Category  @relation(fields: [categoryId], references: [id])
-  products   Product[]
-
-  @@unique([categoryId, name])
+  id       String    @id @default(uuid())
+  name     String    @unique
+  products Product[]
 }
 
 model Product {
-  id              String          @id @default(uuid())
-  sku             String          @unique
-  name            String
-  description     String?
-  unitPrice       Decimal         @db.Decimal(10, 2)
-  quantityInStock Int             @default(0)
-  reorderLevel    Int             @default(0)
-  subcategoryId   String?
-  subcategory     Subcategory?    @relation(fields: [subcategoryId], references: [id])
-  saleItems       SaleItem[]
-  purchaseItems   PurchaseItem[]
-  stockMovements  StockMovement[]
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  id             String          @id @default(uuid())
+  sku            String          @unique
+  name           String
+  description    String?
+  unitPrice      Decimal         @db.Decimal(10, 2)
+  reorderLevel   Int             @default(0)
+  categoryId     String?
+  category       Category?       @relation(fields: [categoryId], references: [id])
+  stocks         ProductStock[]
+  saleItems      SaleItem[]
+  purchaseItems  PurchaseItem[]
+  stockMovements StockMovement[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model ProductStock {
+  id           String    @id @default(uuid())
+  productId    String
+  product      Product   @relation(fields: [productId], references: [id])
+  warehouseId  String
+  warehouse    Warehouse @relation(fields: [warehouseId], references: [id])
+  quantity     Int       @default(0)
+  reorderLevel Int?
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([productId, warehouseId])
+  @@index([warehouseId])
 }
 
 enum StockMovementType {
@@ -87,13 +122,18 @@ enum StockMovementType {
 }
 
 model StockMovement {
-  id        String            @id @default(uuid())
-  productId String
-  product   Product           @relation(fields: [productId], references: [id])
-  type      StockMovementType
-  quantity  Int
-  reason    String?
-  createdAt DateTime          @default(now())
+  id          String            @id @default(uuid())
+  productId   String
+  product     Product           @relation(fields: [productId], references: [id])
+  warehouseId String
+  warehouse   Warehouse         @relation(fields: [warehouseId], references: [id])
+  type        StockMovementType
+  quantity    Int
+  reason      String?
+  createdAt   DateTime          @default(now())
+
+  @@index([productId])
+  @@index([warehouseId])
 }
 
 enum SaleStatus {
@@ -104,18 +144,22 @@ enum SaleStatus {
 }
 
 model Sale {
-  id            String     @id @default(uuid())
-  saleNumber    String     @unique
-  customerId    String
-  customer      Customer   @relation(fields: [customerId], references: [id])
-  status        SaleStatus @default(DRAFT)
-  items         SaleItem[]
-  subtotal      Decimal    @db.Decimal(10, 2)
-  tax           Decimal    @db.Decimal(10, 2) @default(0)
-  total         Decimal    @db.Decimal(10, 2)
-  issuedAt      DateTime?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  id          String     @id @default(uuid())
+  saleNumber  String     @unique
+  customerId  String
+  customer    Customer   @relation(fields: [customerId], references: [id])
+  warehouseId String
+  warehouse   Warehouse  @relation(fields: [warehouseId], references: [id])
+  status      SaleStatus @default(DRAFT)
+  items       SaleItem[]
+  subtotal    Decimal    @db.Decimal(10, 2)
+  tax         Decimal    @default(0) @db.Decimal(10, 2)
+  total       Decimal    @db.Decimal(10, 2)
+  issuedAt    DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([warehouseId])
 }
 
 model SaleItem {
@@ -130,15 +174,15 @@ model SaleItem {
 }
 
 model Vendor {
-  id            String          @id @default(uuid())
+  id            String     @id @default(uuid())
   companyName   String
   contactPerson String?
   email         String?
   phone         String?
   address       String?
   purchases     Purchase[]
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 }
 
 enum PurchaseStatus {
@@ -150,16 +194,20 @@ enum PurchaseStatus {
 }
 
 model Purchase {
-  id            String         @id @default(uuid())
-  purchaseNumber String        @unique
-  vendorId      String
-  vendor        Vendor         @relation(fields: [vendorId], references: [id])
-  status        PurchaseStatus @default(DRAFT)
-  items         PurchaseItem[]
-  orderedAt     DateTime?
-  receivedAt    DateTime?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id             String         @id @default(uuid())
+  purchaseNumber String         @unique
+  vendorId       String
+  vendor         Vendor         @relation(fields: [vendorId], references: [id])
+  warehouseId    String
+  warehouse      Warehouse      @relation(fields: [warehouseId], references: [id])
+  status         PurchaseStatus @default(DRAFT)
+  items          PurchaseItem[]
+  orderedAt      DateTime?
+  receivedAt     DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([warehouseId])
 }
 
 model PurchaseItem {
@@ -172,4 +220,57 @@ model PurchaseItem {
   receivedQuantity Int      @default(0)
   unitCost         Decimal  @db.Decimal(10, 2)
   lineTotal        Decimal  @db.Decimal(10, 2)
+}
+
+enum NotificationType {
+  LOW_STOCK
+  PURCHASE_RECEIVED
+  SALE_ISSUED
+  SYSTEM
+}
+
+model Notification {
+  id          String             @id @default(uuid())
+  // Null = company-wide (visible to COMPANY_ADMIN/SUPER_ADMIN and everyone,
+  // e.g. system/user-management events). Set = scoped to that warehouse's
+  // USER/ADMIN plus all company-level roles (matches data-visibility rules
+  // used elsewhere in the app).
+  warehouseId String?
+  warehouse   Warehouse?         @relation(fields: [warehouseId], references: [id])
+  type        NotificationType
+  title       String
+  message     String
+  metadata    Json?
+  reads       NotificationRead[]
+  createdAt   DateTime           @default(now())
+
+  @@index([warehouseId, createdAt])
+}
+
+// Per-user read receipts. A notification is "unread for me" if no row here
+// matches (notificationId, userId) — lets one broadcast/warehouse-scoped
+// notification have independent read state per recipient.
+model NotificationRead {
+  id             String       @id @default(uuid())
+  notificationId String
+  notification   Notification @relation(fields: [notificationId], references: [id])
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  readAt         DateTime     @default(now())
+
+  @@unique([notificationId, userId])
+  @@index([userId])
+}
+
+model Setting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model FeatureFlag {
+  id      String  @id @default(uuid())
+  key     String  @unique
+  enabled Boolean @default(false)
 }

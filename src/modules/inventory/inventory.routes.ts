@@ -3,15 +3,10 @@ import { asyncHandler } from '@/utils/asyncHandler';
 import { authenticate } from '@/middleware/authenticate';
 import { validateBody } from '@/middleware/validate';
 import * as inventoryController from './inventory.controller';
-import {
-  categoryInputSchema,
-  productInputSchema,
-  restockInputSchema,
-  subcategoryInputSchema,
-} from './inventory.validation';
+import { categoryInputSchema, productInputSchema, restockInputSchema } from './inventory.validation';
 
 export const inventoryRoutes = Router();
-// paragon resin
+
 inventoryRoutes.use(authenticate);
 
 inventoryRoutes.get('/products', asyncHandler(inventoryController.listProductsHandler));
@@ -30,16 +25,3 @@ inventoryRoutes.get('/categories', asyncHandler(inventoryController.listCategori
 inventoryRoutes.post('/categories', validateBody(categoryInputSchema), asyncHandler(inventoryController.createCategoryHandler));
 inventoryRoutes.patch('/categories/:id', validateBody(categoryInputSchema), asyncHandler(inventoryController.updateCategoryHandler));
 inventoryRoutes.delete('/categories/:id', asyncHandler(inventoryController.deleteCategoryHandler));
-
-inventoryRoutes.get('/subcategories', asyncHandler(inventoryController.listSubcategoriesHandler));
-inventoryRoutes.post(
-  '/subcategories',
-  validateBody(subcategoryInputSchema),
-  asyncHandler(inventoryController.createSubcategoryHandler),
-);
-inventoryRoutes.patch(
-  '/subcategories/:id',
-  validateBody(subcategoryInputSchema),
-  asyncHandler(inventoryController.updateSubcategoryHandler),
-);
-inventoryRoutes.delete('/subcategories/:id', asyncHandler(inventoryController.deleteSubcategoryHandler));

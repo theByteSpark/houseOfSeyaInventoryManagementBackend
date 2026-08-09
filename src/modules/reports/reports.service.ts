@@ -1,6 +1,8 @@
 import type { Prisma } from '@prisma/client';
 import { SaleStatus, PurchaseStatus } from '@prisma/client';
 import { prisma } from '@/config/db';
+import type { AuthenticatedUser } from '@/middleware/authenticate';
+import { isCompanyLevel } from '@/utils/warehouseScope';
 
 function parseDateRange(from?: string, to?: string) {
   const fromDate = from ? new Date(from) : undefined;
@@ -29,14 +31,33 @@ function buildPurchaseDateFilter(fromDate?: Date, toDate?: Date): Prisma.Purchas
   return filter;
 }
 
-export async function getSalesReport(from?: string, to?: string, status?: string) {
+// Warehouse-scoped roles (USER/ADMIN) are always locked to their own warehouse.
+// Company-level roles (COMPANY_ADMIN/SUPER_ADMIN) see everything by default, but
+// may narrow to one warehouse via the optional `warehouseId` filter param.
+function scopeSaleWarehouseWhere(user: AuthenticatedUser, warehouseId?: string): Prisma.SaleWhereInput {
+  if (!isCompanyLevel(user)) return { warehouseId: user.warehouseId ?? '__none__' };
+  return warehouseId ? { warehouseId } : {};
+}
+
+function scopePurchaseWarehouseWhere(user: AuthenticatedUser, warehouseId?: string): Prisma.PurchaseWhereInput {
+  if (!isCompanyLevel(user)) return { warehouseId: user.warehouseId ?? '__none__' };
+  return warehouseId ? { warehouseId } : {};
+}
+
+export async function getSalesReport(
+  user: AuthenticatedUser,
+  from?: string,
+  to?: string,
+  status?: string,
+  warehouseId?: string,
+) {
   const { fromDate, toDate } = parseDateRange(from, to);
   const dateFilter = buildSaleDateFilter(fromDate, toDate);
 
   const statusFilter: Prisma.SaleWhereInput =
     status && status !== 'ALL' ? { status: status as SaleStatus } : {};
 
-  const where: Prisma.SaleWhereInput = { AND: [dateFilter, statusFilter] };
+  const where: Prisma.SaleWhereInput = { AND: [dateFilter, statusFilter, scopeSaleWarehouseWhere(user, warehouseId)] };
 
   const [sales, totalCount, statusBreakdown, topProducts] = await Promise.all([
     prisma.sale.findMany({
@@ -87,14 +108,22 @@ export async function getSalesReport(from?: string, to?: string, status?: string
   };
 }
 
-export async function getPurchasesReport(from?: string, to?: string, status?: string) {
+export async function getPurchasesReport(
+  user: AuthenticatedUser,
+  from?: string,
+  to?: string,
+  status?: string,
+  warehouseId?: string,
+) {
   const { fromDate, toDate } = parseDateRange(from, to);
   const dateFilter = buildPurchaseDateFilter(fromDate, toDate);
 
   const statusFilter: Prisma.PurchaseWhereInput =
     status && status !== 'ALL' ? { status: status as PurchaseStatus } : {};
 
-  const where: Prisma.PurchaseWhereInput = { AND: [dateFilter, statusFilter] };
+  const where: Prisma.PurchaseWhereInput = {
+    AND: [dateFilter, statusFilter, scopePurchaseWarehouseWhere(user, warehouseId)],
+  };
 
   const [purchases, totalCount, statusBreakdown, topProducts] = await Promise.all([
     prisma.purchase.findMany({
@@ -145,48 +174,53 @@ export async function getPurchasesReport(from?: string, to?: string, status?: st
   };
 }
 
-export async function getInventoryReport() {
-  const [products, lowStockProducts, categories, recentMovements] = await Promise.all([
+export async function getInventoryReport(user: AuthenticatedUser, warehouseIdFilter?: string) {
+  const warehouseId = isCompanyLevel(user) ? warehouseIdFilter : (user.warehouseId ?? '__none__');
+  const stockWhere: Prisma.ProductStockWhereInput = warehouseId ? { warehouseId } : {};
+
+  const [products, categories, recentMovements] = await Promise.all([
     prisma.product.findMany({
-      include: { subcategory: { include: { category: { select: { name: true } } } } },
-    }),
-    prisma.product.findMany({
-      where: { quantityInStock: { lte: prisma.product.fields.reorderLevel } },
-      orderBy: { quantityInStock: 'asc' },
-      take: 20,
-    }),
-    prisma.category.findMany({
       include: {
-        subcategories: {
-          include: { _count: { select: { products: true } } },
-        },
+        category: { select: { name: true } },
+        stocks: { where: stockWhere },
       },
     }),
+    prisma.category.findMany({
+      include: { _count: { select: { products: true } } },
+    }),
     prisma.stockMovement.findMany({
+      where: warehouseId ? { warehouseId } : {},
       take: 20,
       orderBy: { createdAt: 'desc' },
       include: { product: { select: { name: true, sku: true } } },
     }),
   ]);
 
-  const totalStockValue = products.reduce((sum, p) => sum + Number(p.unitPrice) * p.quantityInStock, 0);
-  const lowStockCount = products.filter((p) => p.quantityInStock <= p.reorderLevel).length;
+  const withQuantity = products.map((p) => ({
+    ...p,
+    quantityInStock: p.stocks.reduce((sum, s) => sum + s.quantity, 0),
+  }));
+
+  const totalStockValue = withQuantity.reduce((sum, p) => sum + Number(p.unitPrice) * p.quantityInStock, 0);
+  const lowStockProducts = withQuantity
+    .filter((p) => p.quantityInStock <= p.reorderLevel)
+    .sort((a, b) => a.quantityInStock - b.quantityInStock)
+    .slice(0, 20);
 
   const categoryBreakdown = categories.map((cat) => {
-    const productCount = cat.subcategories.reduce((sum, sub) => sum + sub._count.products, 0);
-    const categoryProducts = products.filter((p) => p.subcategory?.category?.name === cat.name);
+    const categoryProducts = withQuantity.filter((p) => p.category?.name === cat.name);
     const stockValue = categoryProducts.reduce((sum, p) => sum + Number(p.unitPrice) * p.quantityInStock, 0);
     return {
       category: cat.name,
-      productCount,
+      productCount: cat._count.products,
       stockValue,
     };
   });
 
   return {
-    totalProducts: products.length,
+    totalProducts: withQuantity.length,
     totalStockValue,
-    lowStockCount,
+    lowStockCount: lowStockProducts.length,
     lowStockProducts: lowStockProducts.map((p) => ({
       id: p.id,
       name: p.name,

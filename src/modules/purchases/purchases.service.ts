@@ -2,10 +2,15 @@ import type { PurchaseStatus, Prisma } from '@prisma/client';
 import { prisma } from '@/config/db';
 import { ApiError } from '@/utils/apiError';
 import type { PaginatedResult, PaginationParams } from '@/utils/pagination';
+import type { AuthenticatedUser } from '@/middleware/authenticate';
+import { isCompanyLevel, requireWarehouseId } from '@/utils/warehouseScope';
+import { addStockInTransaction, checkLowStock } from '@/modules/inventory/inventory.service';
+import { createNotification } from '@/modules/notifications/notifications.service';
 import type { PurchaseInput, ReceiveInput } from './purchases.validation';
 
 const PURCHASE_INCLUDE = {
   vendor: { select: { companyName: true, contactPerson: true, email: true, phone: true, address: true } },
+  warehouse: { select: { name: true } },
   items: { include: { product: { select: { name: true, sku: true } } } },
 } satisfies Prisma.PurchaseInclude;
 
@@ -30,6 +35,8 @@ function toDto(purchase: PurchaseWithRelations) {
     purchaseNumber: purchase.purchaseNumber,
     vendorId: purchase.vendorId,
     vendorName: purchase.vendor.companyName,
+    warehouseId: purchase.warehouseId,
+    warehouseName: purchase.warehouse.name,
     status: purchase.status,
     items,
     subtotal,
@@ -46,8 +53,17 @@ async function nextPurchaseNumber(): Promise<string> {
   return `PO-${year}-${String(count + 1).padStart(4, '0')}`;
 }
 
-export async function listPurchases() {
+// Warehouse-scoped roles (USER/ADMIN) are always locked to their own warehouse.
+// Company-level roles see everything by default, but may narrow to one
+// warehouse via the optional `warehouseId` filter param.
+function scopeWarehouseWhere(user: AuthenticatedUser, warehouseId?: string): Prisma.PurchaseWhereInput {
+  if (!isCompanyLevel(user)) return { warehouseId: user.warehouseId ?? '__none__' };
+  return warehouseId ? { warehouseId } : {};
+}
+
+export async function listPurchases(user: AuthenticatedUser) {
   const purchases = await prisma.purchase.findMany({
+    where: scopeWarehouseWhere(user),
     include: PURCHASE_INCLUDE,
     orderBy: { createdAt: 'desc' },
   });
@@ -55,8 +71,10 @@ export async function listPurchases() {
 }
 
 export async function listPurchasesPaginated(
+  user: AuthenticatedUser,
   params: PaginationParams,
   statusFilter: PurchaseStatus | 'ALL',
+  warehouseId?: string,
 ): Promise<PaginatedResult<ReturnType<typeof toDto>>> {
   const { page, pageSize, search, sortBy, sortDir } = params;
 
@@ -70,8 +88,13 @@ export async function listPurchasesPaginated(
       }
     : {};
 
-  const where: Prisma.PurchaseWhereInput =
-    statusFilter === 'ALL' ? searchFilter : { AND: [searchFilter, { status: statusFilter }] };
+  const where: Prisma.PurchaseWhereInput = {
+    AND: [
+      scopeWarehouseWhere(user, warehouseId),
+      searchFilter,
+      ...(statusFilter === 'ALL' ? [] : [{ status: statusFilter }]),
+    ],
+  };
 
   const orderBy: Prisma.PurchaseOrderByWithRelationInput =
     sortBy === 'vendor'
@@ -94,15 +117,17 @@ export async function listPurchasesPaginated(
   return { data: purchases.map(toDto), total, page, pageSize };
 }
 
-export async function getPurchase(id: string) {
-  const purchase = await prisma.purchase.findUnique({ where: { id }, include: PURCHASE_INCLUDE });
+export async function getPurchase(user: AuthenticatedUser, id: string) {
+  const purchase = await prisma.purchase.findFirst({ where: { id, ...scopeWarehouseWhere(user) }, include: PURCHASE_INCLUDE });
   if (!purchase) throw ApiError.notFound('Purchase not found.');
   return toDto(purchase);
 }
 
-export async function createPurchase(input: PurchaseInput) {
+export async function createPurchase(user: AuthenticatedUser, input: PurchaseInput) {
   const vendor = await prisma.vendor.findUnique({ where: { id: input.vendorId } });
   if (!vendor) throw ApiError.notFound('Vendor not found.');
+
+  const warehouseId = requireWarehouseId(user, input.warehouseId);
 
   const productIds = input.items.map((item) => item.productId);
   const products = await prisma.product.findMany({ where: { id: { in: productIds } } });
@@ -128,6 +153,7 @@ export async function createPurchase(input: PurchaseInput) {
     data: {
       purchaseNumber,
       vendorId: vendor.id,
+      warehouseId,
       status: 'DRAFT',
       items: { create: itemsData },
     },
@@ -137,8 +163,8 @@ export async function createPurchase(input: PurchaseInput) {
   return toDto(purchase);
 }
 
-export async function updatePurchase(id: string, input: PurchaseInput) {
-  const existing = await prisma.purchase.findUnique({ where: { id } });
+export async function updatePurchase(user: AuthenticatedUser, id: string, input: PurchaseInput) {
+  const existing = await prisma.purchase.findFirst({ where: { id, ...scopeWarehouseWhere(user) } });
   if (!existing) throw ApiError.notFound('Purchase not found.');
   if (existing.status !== 'DRAFT') throw ApiError.badRequest('Only draft purchases can be edited.');
 
@@ -177,11 +203,11 @@ export async function updatePurchase(id: string, input: PurchaseInput) {
     { timeout: 15000, maxWait: 15000 },
   );
 
-  return getPurchase(id);
+  return getPurchase(user, id);
 }
 
-export async function orderPurchase(id: string) {
-  const purchase = await prisma.purchase.findUnique({ where: { id } });
+export async function orderPurchase(user: AuthenticatedUser, id: string) {
+  const purchase = await prisma.purchase.findFirst({ where: { id, ...scopeWarehouseWhere(user) } });
   if (!purchase) throw ApiError.notFound('Purchase not found.');
   if (purchase.status !== 'DRAFT') throw ApiError.badRequest('Only draft purchases can be ordered.');
 
@@ -194,9 +220,9 @@ export async function orderPurchase(id: string) {
   return toDto(updated);
 }
 
-export async function receivePurchaseItems(id: string, input: ReceiveInput) {
-  const purchase = await prisma.purchase.findUnique({
-    where: { id },
+export async function receivePurchaseItems(user: AuthenticatedUser, id: string, input: ReceiveInput) {
+  const purchase = await prisma.purchase.findFirst({
+    where: { id, ...scopeWarehouseWhere(user) },
     include: { items: true },
   });
   if (!purchase) throw ApiError.notFound('Purchase not found.');
@@ -233,18 +259,9 @@ export async function receivePurchaseItems(id: string, input: ReceiveInput) {
           where: { id: item.id },
           data: { receivedQuantity: { increment: update.qty } },
         });
-        await tx.product.update({
-          where: { id: update.productId },
-          data: { quantityInStock: { increment: update.qty } },
-        });
-        await tx.stockMovement.create({
-          data: {
-            productId: update.productId,
-            type: 'RESTOCK',
-            quantity: update.qty,
-            reason: `PO ${purchase.purchaseNumber}`,
-          },
-        });
+        for (const op of addStockInTransaction(tx, update.productId, purchase.warehouseId, update.qty, `PO ${purchase.purchaseNumber}`)) {
+          await op;
+        }
       }
 
       const allItems = await tx.purchaseItem.findMany({ where: { purchaseId: id } });
@@ -260,11 +277,22 @@ export async function receivePurchaseItems(id: string, input: ReceiveInput) {
     { timeout: 15000, maxWait: 15000 },
   );
 
-  return getPurchase(id);
+  for (const update of updates) {
+    await checkLowStock(update.productId, purchase.warehouseId);
+  }
+  await createNotification({
+    warehouseId: purchase.warehouseId,
+    type: 'PURCHASE_RECEIVED',
+    title: 'Purchase received',
+    message: `Purchase order ${purchase.purchaseNumber} received a stock delivery.`,
+    metadata: { purchaseId: purchase.id, purchaseNumber: purchase.purchaseNumber },
+  });
+
+  return getPurchase(user, id);
 }
 
-export async function cancelPurchase(id: string) {
-  const purchase = await prisma.purchase.findUnique({ where: { id } });
+export async function cancelPurchase(user: AuthenticatedUser, id: string) {
+  const purchase = await prisma.purchase.findFirst({ where: { id, ...scopeWarehouseWhere(user) } });
   if (!purchase) throw ApiError.notFound('Purchase not found.');
   if (purchase.status === 'RECEIVED') throw ApiError.badRequest('A received purchase cannot be cancelled.');
   if (purchase.status === 'CANCELLED') throw ApiError.badRequest('Purchase is already cancelled.');

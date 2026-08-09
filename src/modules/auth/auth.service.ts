@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt';
 import { randomInt } from 'crypto';
+import type { Role } from '@prisma/client';
 import { prisma } from '@/config/db';
 import { ApiError } from '@/utils/apiError';
 import {
@@ -14,11 +15,21 @@ import type { ForgotPasswordInput, LoginInput, ResetPasswordInput, VerifyResetCo
 
 const SALT_ROUNDS = 10;
 
-function toPublicUser(user: { id: string; name: string; email: string; role: 'ADMIN' | 'STAFF' }) {
-  return { id: user.id, name: user.name, email: user.email, role: user.role };
+async function toPublicUser(user: { id: string; name: string; email: string; role: Role }) {
+  const mapping = await prisma.userWarehouse.findUnique({
+    where: { userId: user.id },
+    include: { warehouse: { select: { id: true, name: true } } },
+  });
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    warehouse: mapping ? { id: mapping.warehouse.id, name: mapping.warehouse.name } : null,
+  };
 }
 
-async function issueTokens(userId: string, role: 'ADMIN' | 'STAFF') {
+async function issueTokens(userId: string, role: Role) {
   const accessToken = signAccessToken({ sub: userId, role });
   const refreshToken = signRefreshToken({ sub: userId });
   const refreshTokenHash = await bcrypt.hash(refreshToken, SALT_ROUNDS);
@@ -34,7 +45,7 @@ export async function login(input: LoginInput) {
   if (!passwordMatches) throw ApiError.unauthorized('Invalid email or password.');
 
   const tokens = await issueTokens(user.id, user.role);
-  return { user: toPublicUser(user), ...tokens };
+  return { user: await toPublicUser(user), ...tokens };
 }
 
 export async function refresh(refreshToken: string) {
@@ -52,7 +63,7 @@ export async function refresh(refreshToken: string) {
   if (!matches) throw ApiError.unauthorized('Session no longer valid.');
 
   const tokens = await issueTokens(user.id, user.role);
-  return { user: toPublicUser(user), ...tokens };
+  return { user: await toPublicUser(user), ...tokens };
 }
 
 export async function logout(userId: string) {
@@ -64,6 +75,7 @@ export async function getCurrentUser(userId: string) {
   if (!user) throw ApiError.notFound('User not found.');
   return toPublicUser(user);
 }
+
 
 const RESET_CODE_TTL_MS = 10 * 60 * 1000;
 

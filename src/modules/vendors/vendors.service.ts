@@ -57,10 +57,11 @@ export async function listVendors() {
 
 export async function listVendorsPaginated(
   params: PaginationParams,
+  warehouseId?: string,
 ): Promise<PaginatedResult<ReturnType<typeof toDto>>> {
   const { page, pageSize, search, sortBy, sortDir } = params;
 
-  const where: Prisma.VendorWhereInput = search
+  const searchFilter: Prisma.VendorWhereInput = search
     ? {
         OR: [
           { companyName: { contains: search, mode: 'insensitive' } },
@@ -70,6 +71,10 @@ export async function listVendorsPaginated(
         ],
       }
     : {};
+
+  const where: Prisma.VendorWhereInput = warehouseId
+    ? { AND: [searchFilter, { purchases: { some: { warehouseId } } }] }
+    : searchFilter;
 
   const orderBy: Prisma.VendorOrderByWithRelationInput =
     sortBy === 'totalOrders'

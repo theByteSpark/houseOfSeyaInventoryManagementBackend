@@ -12,7 +12,8 @@ export async function listVendorsHandler(req: Request, res: Response) {
   }
 
   const params = parsePaginationParams(req, SORTABLE_FIELDS);
-  res.json(await vendorsService.listVendorsPaginated(params));
+  const warehouseId = typeof req.query.warehouseId === 'string' && req.query.warehouseId ? req.query.warehouseId : undefined;
+  res.json(await vendorsService.listVendorsPaginated(params, warehouseId));
 }
 
 export async function getVendorHandler(req: Request, res: Response) {

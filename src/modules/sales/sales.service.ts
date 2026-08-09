@@ -2,11 +2,15 @@ import type { SaleStatus, Prisma } from '@prisma/client';
 import { prisma } from '@/config/db';
 import { ApiError } from '@/utils/apiError';
 import type { PaginatedResult, PaginationParams } from '@/utils/pagination';
-import { deductStockInTransaction } from '@/modules/inventory/inventory.service';
+import type { AuthenticatedUser } from '@/middleware/authenticate';
+import { isCompanyLevel, requireWarehouseId } from '@/utils/warehouseScope';
+import { checkLowStock, deductStockInTransaction, getProductStockAtWarehouse } from '@/modules/inventory/inventory.service';
+import { createNotification } from '@/modules/notifications/notifications.service';
 import type { SaleInput } from './sales.validation';
 
 const SALE_INCLUDE = {
   customer: { select: { name: true, email: true, phone: true, address: true } },
+  warehouse: { select: { name: true } },
   items: { include: { product: { select: { name: true, sku: true } } } },
 } satisfies Prisma.SaleInclude;
 
@@ -18,6 +22,8 @@ function toDto(sale: SaleWithRelations) {
     saleNumber: sale.saleNumber,
     customerId: sale.customerId,
     customerName: sale.customer.name,
+    warehouseId: sale.warehouseId,
+    warehouseName: sale.warehouse.name,
     status: sale.status,
     items: sale.items.map((item) => ({
       id: item.id,
@@ -42,8 +48,17 @@ async function nextSaleNumber(): Promise<string> {
   return `SALE-${year}-${String(count + 1).padStart(4, '0')}`;
 }
 
-export async function listSales() {
+// Warehouse-scoped roles (USER/ADMIN) are always locked to their own warehouse.
+// Company-level roles see everything by default, but may narrow to one
+// warehouse via the optional `warehouseId` filter param.
+function scopeWarehouseWhere(user: AuthenticatedUser, warehouseId?: string): Prisma.SaleWhereInput {
+  if (!isCompanyLevel(user)) return { warehouseId: user.warehouseId ?? '__none__' };
+  return warehouseId ? { warehouseId } : {};
+}
+
+export async function listSales(user: AuthenticatedUser) {
   const sales = await prisma.sale.findMany({
+    where: scopeWarehouseWhere(user),
     include: SALE_INCLUDE,
     orderBy: { createdAt: 'desc' },
   });
@@ -51,8 +66,10 @@ export async function listSales() {
 }
 
 export async function listSalesPaginated(
+  user: AuthenticatedUser,
   params: PaginationParams,
   statusFilter: SaleStatus | 'ALL',
+  warehouseId?: string,
 ): Promise<PaginatedResult<ReturnType<typeof toDto>>> {
   const { page, pageSize, search, sortBy, sortDir } = params;
 
@@ -66,8 +83,13 @@ export async function listSalesPaginated(
       }
     : {};
 
-  const where: Prisma.SaleWhereInput =
-    statusFilter === 'ALL' ? searchFilter : { AND: [searchFilter, { status: statusFilter }] };
+  const where: Prisma.SaleWhereInput = {
+    AND: [
+      scopeWarehouseWhere(user, warehouseId),
+      searchFilter,
+      ...(statusFilter === 'ALL' ? [] : [{ status: statusFilter }]),
+    ],
+  };
 
   const orderBy: Prisma.SaleOrderByWithRelationInput =
     sortBy === 'customer'
@@ -90,15 +112,20 @@ export async function listSalesPaginated(
   return { data: sales.map(toDto), total, page, pageSize };
 }
 
-export async function getSale(id: string) {
-  const sale = await prisma.sale.findUnique({ where: { id }, include: SALE_INCLUDE });
+export async function getSale(user: AuthenticatedUser, id: string) {
+  const sale = await prisma.sale.findFirst({
+    where: { id, ...scopeWarehouseWhere(user) },
+    include: SALE_INCLUDE,
+  });
   if (!sale) throw ApiError.notFound('Sale not found.');
   return toDto(sale);
 }
 
-export async function createSale(input: SaleInput) {
+export async function createSale(user: AuthenticatedUser, input: SaleInput) {
   const customer = await prisma.customer.findUnique({ where: { id: input.customerId } });
   if (!customer) throw ApiError.notFound('Customer not found.');
+
+  const warehouseId = requireWarehouseId(user, input.warehouseId);
 
   const productIds = input.items.map((item) => item.productId);
   const products = await prisma.product.findMany({ where: { id: { in: productIds } } });
@@ -132,6 +159,7 @@ export async function createSale(input: SaleInput) {
     data: {
       saleNumber,
       customerId: customer.id,
+      warehouseId,
       status: 'DRAFT',
       subtotal,
       tax,
@@ -144,8 +172,8 @@ export async function createSale(input: SaleInput) {
   return toDto(sale);
 }
 
-export async function updateSale(id: string, input: SaleInput) {
-  const existing = await prisma.sale.findUnique({ where: { id } });
+export async function updateSale(user: AuthenticatedUser, id: string, input: SaleInput) {
+  const existing = await prisma.sale.findFirst({ where: { id, ...scopeWarehouseWhere(user) } });
   if (!existing) throw ApiError.notFound('Sale not found.');
   if (existing.status !== 'DRAFT') throw ApiError.badRequest('Only draft sales can be edited.');
 
@@ -195,23 +223,19 @@ export async function updateSale(id: string, input: SaleInput) {
     { timeout: 15000, maxWait: 15000 },
   );
 
-  return getSale(id);
+  return getSale(user, id);
 }
 
-async function transitionSale(id: string, status: SaleStatus) {
-  const sale = await prisma.sale.findUnique({ where: { id }, include: SALE_INCLUDE });
+async function transitionSale(user: AuthenticatedUser, id: string, status: SaleStatus) {
+  const sale = await prisma.sale.findFirst({ where: { id, ...scopeWarehouseWhere(user) }, include: SALE_INCLUDE });
   if (!sale) throw ApiError.notFound('Sale not found.');
 
   if (status === 'ISSUED') {
     if (sale.status !== 'DRAFT') throw ApiError.badRequest('Only draft sales can be issued.');
 
-    const productIds = sale.items.map((item) => item.productId);
-    const products = await prisma.product.findMany({ where: { id: { in: productIds } } });
-    const productById = new Map(products.map((p) => [p.id, p]));
-
     for (const item of sale.items) {
-      const product = productById.get(item.productId);
-      if (!product || product.quantityInStock < item.quantity) {
+      const available = await getProductStockAtWarehouse(item.productId, sale.warehouseId);
+      if (available < item.quantity) {
         throw ApiError.badRequest(`Not enough stock for ${item.product.name}.`);
       }
     }
@@ -219,7 +243,7 @@ async function transitionSale(id: string, status: SaleStatus) {
     await prisma.$transaction(
       async (tx) => {
         for (const item of sale.items) {
-          for (const op of deductStockInTransaction(tx, item.productId, item.quantity, `Sale ${sale.saleNumber}`)) {
+          for (const op of deductStockInTransaction(tx, item.productId, sale.warehouseId, item.quantity, `Sale ${sale.saleNumber}`)) {
             await op;
           }
         }
@@ -231,7 +255,18 @@ async function transitionSale(id: string, status: SaleStatus) {
       { timeout: 15000, maxWait: 15000 },
     );
 
-    return getSale(id);
+    for (const item of sale.items) {
+      await checkLowStock(item.productId, sale.warehouseId);
+    }
+    await createNotification({
+      warehouseId: sale.warehouseId,
+      type: 'SALE_ISSUED',
+      title: 'Sale confirmed',
+      message: `Sale ${sale.saleNumber} for ${sale.customer.name} was confirmed.`,
+      metadata: { saleId: sale.id, saleNumber: sale.saleNumber },
+    });
+
+    return getSale(user, id);
   }
 
   if (status === 'CANCELLED' && sale.status === 'PAID') {
@@ -251,20 +286,14 @@ async function transitionSale(id: string, status: SaleStatus) {
   return toDto(updated);
 }
 
-export async function issueSale(id: string) {
-  return transitionSale(id, 'ISSUED');
+export async function issueSale(user: AuthenticatedUser, id: string) {
+  return transitionSale(user, id, 'ISSUED');
 }
 
-export async function markSalePaid(id: string) {
-  return transitionSale(id, 'PAID');
+export async function markSalePaid(user: AuthenticatedUser, id: string) {
+  return transitionSale(user, id, 'PAID');
 }
 
-export async function cancelSale(id: string) {
-  return transitionSale(id, 'CANCELLED');
-}
-
-export async function getSaleForInvoice(id: string) {
-  const sale = await prisma.sale.findUnique({ where: { id }, include: SALE_INCLUDE });
-  if (!sale) throw ApiError.notFound('Sale not found.');
-  return sale;
+export async function cancelSale(user: AuthenticatedUser, id: string) {
+  return transitionSale(user, id, 'CANCELLED');
 }

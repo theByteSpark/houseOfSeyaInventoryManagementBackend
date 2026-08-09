@@ -24,10 +24,13 @@ export async function listCustomers() {
   return customers.map(toDto);
 }
 
-export async function listCustomersPaginated(params: PaginationParams): Promise<PaginatedResult<ReturnType<typeof toDto>>> {
+export async function listCustomersPaginated(
+  params: PaginationParams,
+  warehouseId?: string,
+): Promise<PaginatedResult<ReturnType<typeof toDto>>> {
   const { page, pageSize, search, sortBy, sortDir } = params;
 
-  const where: Prisma.CustomerWhereInput = search
+  const searchFilter: Prisma.CustomerWhereInput = search
     ? {
         OR: [
           { name: { contains: search, mode: 'insensitive' } },
@@ -36,6 +39,10 @@ export async function listCustomersPaginated(params: PaginationParams): Promise<
         ],
       }
     : {};
+
+  const where: Prisma.CustomerWhereInput = warehouseId
+    ? { AND: [searchFilter, { sales: { some: { warehouseId } } }] }
+    : searchFilter;
 
   const orderBy: Prisma.CustomerOrderByWithRelationInput =
     sortBy === 'totalSales'

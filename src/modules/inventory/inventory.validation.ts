@@ -5,26 +5,22 @@ export const productInputSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   unitPrice: z.coerce.number().positive(),
-  quantityInStock: z.coerce.number().int().min(0),
   reorderLevel: z.coerce.number().int().min(0),
-  subcategoryId: z.string().optional().or(z.literal('')),
+  categoryId: z.string().optional().or(z.literal('')),
+  quantityInStock: z.coerce.number().int().min(0).optional(),
+  warehouseId: z.string().optional(),
 });
 
 export const restockInputSchema = z.object({
   quantity: z.coerce.number().int().positive(),
   reason: z.string().optional(),
+  warehouseId: z.string().optional(),
 });
 
 export const categoryInputSchema = z.object({
   name: z.string().min(1),
 });
 
-export const subcategoryInputSchema = z.object({
-  name: z.string().min(1),
-  categoryId: z.string().min(1),
-});
-
 export type ProductInput = z.infer<typeof productInputSchema>;
 export type RestockInput = z.infer<typeof restockInputSchema>;
 export type CategoryInput = z.infer<typeof categoryInputSchema>;
-export type SubcategoryInput = z.infer<typeof subcategoryInputSchema>;

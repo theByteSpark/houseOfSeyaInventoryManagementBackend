@@ -8,7 +8,7 @@ import { createUserSchema, updateUserSchema } from './users.validation';
 
 export const usersRoutes = Router();
 
-usersRoutes.use(authenticate, authorize('ADMIN'));
+usersRoutes.use(authenticate, authorize('ADMIN', 'COMPANY_ADMIN', 'SUPER_ADMIN'));
 
 usersRoutes.get('/', asyncHandler(usersController.listUsersHandler));
 usersRoutes.post('/', validateBody(createUserSchema), asyncHandler(usersController.createUserHandler));

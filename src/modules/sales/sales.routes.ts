@@ -16,4 +16,3 @@ salesRoutes.patch('/:id', validateBody(saleInputSchema), asyncHandler(salesContr
 salesRoutes.patch('/:id/issue', asyncHandler(salesController.issueSaleHandler));
 salesRoutes.patch('/:id/pay', asyncHandler(salesController.markSalePaidHandler));
 salesRoutes.patch('/:id/cancel', asyncHandler(salesController.cancelSaleHandler));
-salesRoutes.get('/:id/invoice-pdf', asyncHandler(salesController.getInvoicePdfHandler));
