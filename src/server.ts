@@ -1,6 +1,9 @@
 import { app } from '@/app';
 import { env } from '@/config/env';
+import { initNotificationsWebSocket } from '@/modules/notifications/ws';
 
-app.listen(env.PORT, () => {
+const server = app.listen(env.PORT, () => {
   console.log(`House of Seya backend listening on http://localhost:${env.PORT}`);
 });
+
+initNotificationsWebSocket(server);

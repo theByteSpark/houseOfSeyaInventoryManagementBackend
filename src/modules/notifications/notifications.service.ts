@@ -3,6 +3,7 @@ import { prisma } from '@/config/db';
 import { ApiError } from '@/utils/apiError';
 import type { AuthenticatedUser } from '@/middleware/authenticate';
 import { isCompanyLevel } from '@/utils/warehouseScope';
+import { pushToUsers } from '@/modules/notifications/ws';
 
 // A notification is visible to a user if it's company-wide (warehouseId null)
 // or scoped to their own warehouse. Company-level roles see everything.
@@ -100,6 +101,29 @@ export async function markAllAsRead(user: AuthenticatedUser) {
   });
 }
 
+// Resolves which userIds should receive a notification scoped to the given
+// warehouse — mirrors visibilityWhere() above, just from the recipient side
+// instead of the viewer side. Null warehouseId = every user (company-wide).
+async function resolveRecipientIds(warehouseId: string | null): Promise<string[]> {
+  const companyLevelUsers = await prisma.user.findMany({
+    where: { role: { in: ['COMPANY_ADMIN', 'SUPER_ADMIN'] } },
+    select: { id: true },
+  });
+  const companyLevelIds = companyLevelUsers.map((u) => u.id);
+
+  if (warehouseId === null) {
+    const allUsers = await prisma.user.findMany({ select: { id: true } });
+    return allUsers.map((u) => u.id);
+  }
+
+  const warehouseUsers = await prisma.userWarehouse.findMany({
+    where: { warehouseId },
+    select: { userId: true },
+  });
+
+  return [...new Set([...companyLevelIds, ...warehouseUsers.map((m) => m.userId)])];
+}
+
 // Internal helper for other modules to raise a notification. Not exposed via HTTP.
 export async function createNotification(input: {
   warehouseId?: string | null;
@@ -108,7 +132,7 @@ export async function createNotification(input: {
   message: string;
   metadata?: Record<string, unknown>;
 }) {
-  await prisma.notification.create({
+  const notification = await prisma.notification.create({
     data: {
       warehouseId: input.warehouseId ?? null,
       type: input.type,
@@ -117,4 +141,19 @@ export async function createNotification(input: {
       metadata: input.metadata as Prisma.InputJsonValue | undefined,
     },
   });
+
+  try {
+    const recipientIds = await resolveRecipientIds(input.warehouseId ?? null);
+    pushToUsers(recipientIds, {
+      type: 'notification',
+      id: notification.id,
+      notificationType: notification.type,
+      title: notification.title,
+      message: notification.message,
+    });
+  } catch (err) {
+    // Real-time delivery is best-effort — the notification row already
+    // exists, so the 30s poll picks it up regardless.
+    console.error('Failed to push notification over WebSocket', err);
+  }
 }
