@@ -1,18 +1,31 @@
 import type { Request, Response } from 'express';
 import { ApiError } from '@/utils/apiError';
-import { buildProductImportTemplate, importProductsCsv } from './products.import';
-import { buildSalesImportTemplate, importSalesCsv } from './sales.import';
-import { buildPurchasesImportTemplate, importPurchasesCsv } from './purchases.import';
+import { parseCsvObjects } from '@/utils/csv';
+import { parseExcel } from '@/utils/excel';
+import { buildProductImportTemplate, importProducts } from './products.import';
+import { buildSalesImportTemplate, importSales } from './sales.import';
+import { buildPurchasesImportTemplate, importPurchases } from './purchases.import';
 
 function requireUser(req: Request) {
   if (!req.user) throw ApiError.unauthorized();
   return req.user;
 }
 
-function requireUploadedFile(req: Request): string {
+async function requireUploadedRows(req: Request): Promise<Record<string, string>[]> {
   const file = (req as Request & { file?: Express.Multer.File }).file;
   if (!file) throw ApiError.badRequest('No file uploaded.');
-  return file.buffer.toString('utf-8');
+
+  const name = file.originalname.toLowerCase();
+  const isExcel =
+    name.endsWith('.xlsx') ||
+    name.endsWith('.xls') ||
+    file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    file.mimetype === 'application/vnd.ms-excel';
+
+  if (isExcel) {
+    return parseExcel(file.buffer);
+  }
+  return parseCsvObjects(file.buffer.toString('utf-8'));
 }
 
 function optionalWarehouseId(req: Request): string | undefined {
@@ -20,41 +33,66 @@ function optionalWarehouseId(req: Request): string | undefined {
   return typeof value === 'string' && value ? value : undefined;
 }
 
-export function getProductsTemplateHandler(_req: Request, res: Response) {
-  const csv = buildProductImportTemplate();
+function isExcelFormat(req: Request): boolean {
+  return req.query?.format === 'xlsx';
+}
+
+export async function getProductsTemplateHandler(req: Request, res: Response) {
+  if (isExcelFormat(req)) {
+    const buffer = await buildProductImportTemplate('xlsx');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="products-import-template.xlsx"');
+    res.send(buffer);
+    return;
+  }
+  const csv = buildProductImportTemplate('csv');
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename="products-import-template.csv"');
   res.send(csv);
 }
 
 export async function importProductsHandler(req: Request, res: Response) {
-  const csv = requireUploadedFile(req);
-  const result = await importProductsCsv(requireUser(req), csv, optionalWarehouseId(req));
+  const rows = await requireUploadedRows(req);
+  const result = await importProducts(requireUser(req), rows, optionalWarehouseId(req));
   res.json(result);
 }
 
-export function getSalesTemplateHandler(_req: Request, res: Response) {
-  const csv = buildSalesImportTemplate();
+export async function getSalesTemplateHandler(req: Request, res: Response) {
+  if (isExcelFormat(req)) {
+    const buffer = await buildSalesImportTemplate('xlsx');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="sales-import-template.xlsx"');
+    res.send(buffer);
+    return;
+  }
+  const csv = buildSalesImportTemplate('csv');
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename="sales-import-template.csv"');
   res.send(csv);
 }
 
 export async function importSalesHandler(req: Request, res: Response) {
-  const csv = requireUploadedFile(req);
-  const result = await importSalesCsv(requireUser(req), csv, optionalWarehouseId(req));
+  const rows = await requireUploadedRows(req);
+  const result = await importSales(requireUser(req), rows, optionalWarehouseId(req));
   res.json(result);
 }
 
-export function getPurchasesTemplateHandler(_req: Request, res: Response) {
-  const csv = buildPurchasesImportTemplate();
+export async function getPurchasesTemplateHandler(req: Request, res: Response) {
+  if (isExcelFormat(req)) {
+    const buffer = await buildPurchasesImportTemplate('xlsx');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="purchases-import-template.xlsx"');
+    res.send(buffer);
+    return;
+  }
+  const csv = buildPurchasesImportTemplate('csv');
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename="purchases-import-template.csv"');
   res.send(csv);
 }
 
 export async function importPurchasesHandler(req: Request, res: Response) {
-  const csv = requireUploadedFile(req);
-  const result = await importPurchasesCsv(requireUser(req), csv, optionalWarehouseId(req));
+  const rows = await requireUploadedRows(req);
+  const result = await importPurchases(requireUser(req), rows, optionalWarehouseId(req));
   res.json(result);
 }

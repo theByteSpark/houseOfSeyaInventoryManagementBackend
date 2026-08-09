@@ -1,16 +1,21 @@
 import { prisma } from '@/config/db';
 import { ApiError } from '@/utils/apiError';
-import { parseCsvObjects, toCsv } from '@/utils/csv';
+import { toCsv } from '@/utils/csv';
+import { buildExcelTemplate } from '@/utils/excel';
 import type { AuthenticatedUser } from '@/middleware/authenticate';
 import { requireWarehouseId } from '@/utils/warehouseScope';
 
 const TEMPLATE_HEADERS = ['vendorName', 'sku', 'quantity', 'unitCost'];
+const TEMPLATE_SAMPLE_ROWS: (string | number)[][] = [
+  ['Atelier Moreau', 'FAB-COT-001', '100', '6.50'],
+  ['Cascade Studio', 'TRM-ZIP-021', '20', '11.00'],
+];
 
-export function buildPurchasesImportTemplate(): string {
-  return toCsv(TEMPLATE_HEADERS, [
-    ['Atelier Moreau', 'FAB-COT-001', '100', '6.50'],
-    ['Cascade Studio', 'TRM-ZIP-021', '20', '11.00'],
-  ]);
+export async function buildPurchasesImportTemplate(format: 'csv' | 'xlsx'): Promise<string | Buffer> {
+  if (format === 'xlsx') {
+    return buildExcelTemplate(TEMPLATE_HEADERS, TEMPLATE_SAMPLE_ROWS);
+  }
+  return toCsv(TEMPLATE_HEADERS, TEMPLATE_SAMPLE_ROWS);
 }
 
 interface ImportRowResult {
@@ -26,12 +31,11 @@ async function nextPurchaseNumber(): Promise<string> {
   return `PO-${year}-${String(count + 1).padStart(4, '0')}`;
 }
 
-export async function importPurchasesCsv(
+export async function importPurchases(
   user: AuthenticatedUser,
-  csvContent: string,
+  rows: Record<string, string>[],
   warehouseIdInput?: string,
 ): Promise<{ results: ImportRowResult[]; createdCount: number; errorCount: number }> {
-  const rows = parseCsvObjects(csvContent);
   if (rows.length === 0) {
     throw ApiError.badRequest('The uploaded file has no data rows.');
   }

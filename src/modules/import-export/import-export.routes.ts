@@ -8,10 +8,17 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype === 'text/csv' || file.originalname.toLowerCase().endsWith('.csv')) {
+    const name = file.originalname.toLowerCase();
+    const isCsv = file.mimetype === 'text/csv' || name.endsWith('.csv');
+    const isXlsx =
+      file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      file.mimetype === 'application/vnd.ms-excel' ||
+      name.endsWith('.xlsx') ||
+      name.endsWith('.xls');
+    if (isCsv || isXlsx) {
       cb(null, true);
     } else {
-      cb(new Error('Only .csv files are supported.'));
+      cb(new Error('Only .csv or .xlsx files are supported.'));
     }
   },
 });

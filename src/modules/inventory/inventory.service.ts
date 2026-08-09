@@ -214,7 +214,23 @@ export async function updateProduct(user: AuthenticatedUser, id: string, input: 
 export async function deleteProduct(id: string) {
   const product = await prisma.product.findUnique({ where: { id } });
   if (!product) throw ApiError.notFound('Product not found.');
-  await prisma.product.delete({ where: { id } });
+
+  const [saleItemCount, purchaseItemCount] = await Promise.all([
+    prisma.saleItem.count({ where: { productId: id } }),
+    prisma.purchaseItem.count({ where: { productId: id } }),
+  ]);
+
+  if (saleItemCount > 0 || purchaseItemCount > 0) {
+    throw ApiError.conflict(
+      'Cannot delete this product because it is referenced in existing sales or purchases.',
+    );
+  }
+
+  await prisma.$transaction([
+    prisma.stockMovement.deleteMany({ where: { productId: id } }),
+    prisma.productStock.deleteMany({ where: { productId: id } }),
+    prisma.product.delete({ where: { id } }),
+  ]);
 }
 
 export async function restockProduct(user: AuthenticatedUser, id: string, input: RestockInput) {

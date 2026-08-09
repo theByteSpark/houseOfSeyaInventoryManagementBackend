@@ -1,16 +1,21 @@
 import { prisma } from '@/config/db';
 import { ApiError } from '@/utils/apiError';
-import { parseCsvObjects, toCsv } from '@/utils/csv';
+import { toCsv } from '@/utils/csv';
+import { buildExcelTemplate } from '@/utils/excel';
 import type { AuthenticatedUser } from '@/middleware/authenticate';
 import { requireWarehouseId } from '@/utils/warehouseScope';
 
 const TEMPLATE_HEADERS = ['sku', 'name', 'description', 'category', 'unitPrice', 'reorderLevel', 'quantity'];
+const TEMPLATE_SAMPLE_ROWS: (string | number)[][] = [
+  ['FAB-COT-001', 'Cotton Poplin — Ivory', 'Premium combed cotton poplin, 60" width', 'Fabrics', '8.50', '50', '100'],
+  ['TRM-ZIP-021', 'Invisible Zippers — 22" Navy', 'Pack of 20', 'Trims & Accessories', '15.40', '10', '20'],
+];
 
-export function buildProductImportTemplate(): string {
-  return toCsv(TEMPLATE_HEADERS, [
-    ['FAB-COT-001', 'Cotton Poplin — Ivory', 'Premium combed cotton poplin, 60" width', 'Fabrics', '8.50', '50', '100'],
-    ['TRM-ZIP-021', 'Invisible Zippers — 22" Navy', 'Pack of 20', 'Trims & Accessories', '15.40', '10', '20'],
-  ]);
+export async function buildProductImportTemplate(format: 'csv' | 'xlsx'): Promise<string | Buffer> {
+  if (format === 'xlsx') {
+    return buildExcelTemplate(TEMPLATE_HEADERS, TEMPLATE_SAMPLE_ROWS);
+  }
+  return toCsv(TEMPLATE_HEADERS, TEMPLATE_SAMPLE_ROWS);
 }
 
 interface ImportRowResult {
@@ -20,12 +25,11 @@ interface ImportRowResult {
   message?: string;
 }
 
-export async function importProductsCsv(
+export async function importProducts(
   user: AuthenticatedUser,
-  csvContent: string,
+  rows: Record<string, string>[],
   warehouseIdInput?: string,
 ): Promise<{ results: ImportRowResult[]; createdCount: number; updatedCount: number; errorCount: number }> {
-  const rows = parseCsvObjects(csvContent);
   if (rows.length === 0) {
     throw ApiError.badRequest('The uploaded file has no data rows.');
   }

@@ -1,16 +1,21 @@
 import { prisma } from '@/config/db';
 import { ApiError } from '@/utils/apiError';
-import { parseCsvObjects, toCsv } from '@/utils/csv';
+import { toCsv } from '@/utils/csv';
+import { buildExcelTemplate } from '@/utils/excel';
 import type { AuthenticatedUser } from '@/middleware/authenticate';
 import { requireWarehouseId } from '@/utils/warehouseScope';
 
 const TEMPLATE_HEADERS = ['customerEmail', 'sku', 'quantity', 'taxRate'];
+const TEMPLATE_SAMPLE_ROWS: (string | number)[][] = [
+  ['orders@ateliermoreau.fr', 'FAB-COT-001', '10', '0.1'],
+  ['hello@cascadestudio.com', 'TRM-ZIP-021', '2', ''],
+];
 
-export function buildSalesImportTemplate(): string {
-  return toCsv(TEMPLATE_HEADERS, [
-    ['orders@ateliermoreau.fr', 'FAB-COT-001', '10', '0.1'],
-    ['hello@cascadestudio.com', 'TRM-ZIP-021', '2', ''],
-  ]);
+export async function buildSalesImportTemplate(format: 'csv' | 'xlsx'): Promise<string | Buffer> {
+  if (format === 'xlsx') {
+    return buildExcelTemplate(TEMPLATE_HEADERS, TEMPLATE_SAMPLE_ROWS);
+  }
+  return toCsv(TEMPLATE_HEADERS, TEMPLATE_SAMPLE_ROWS);
 }
 
 interface ImportRowResult {
@@ -26,12 +31,11 @@ async function nextSaleNumber(): Promise<string> {
   return `SALE-${year}-${String(count + 1).padStart(4, '0')}`;
 }
 
-export async function importSalesCsv(
+export async function importSales(
   user: AuthenticatedUser,
-  csvContent: string,
+  rows: Record<string, string>[],
   warehouseIdInput?: string,
 ): Promise<{ results: ImportRowResult[]; createdCount: number; errorCount: number }> {
-  const rows = parseCsvObjects(csvContent);
   if (rows.length === 0) {
     throw ApiError.badRequest('The uploaded file has no data rows.');
   }

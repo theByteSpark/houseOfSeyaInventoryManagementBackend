@@ -16,7 +16,7 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     return res.status(400).json({ error: err.message });
   }
 
-  if (err instanceof Error && err.message === 'Only .csv files are supported.') {
+  if (err instanceof Error && err.message.includes('files are supported')) {
     return res.status(400).json({ error: err.message });
   }
 
