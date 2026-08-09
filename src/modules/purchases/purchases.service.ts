@@ -166,10 +166,14 @@ export async function createPurchase(user: AuthenticatedUser, input: PurchaseInp
 export async function updatePurchase(user: AuthenticatedUser, id: string, input: PurchaseInput) {
   const existing = await prisma.purchase.findFirst({ where: { id, ...scopeWarehouseWhere(user) } });
   if (!existing) throw ApiError.notFound('Purchase not found.');
-  if (existing.status !== 'DRAFT') throw ApiError.badRequest('Only draft purchases can be edited.');
+  if (existing.status === 'RECEIVED') throw ApiError.badRequest('A received purchase cannot be edited.');
+  if (existing.status === 'CANCELLED') throw ApiError.badRequest('A cancelled purchase cannot be edited.');
 
   const vendor = await prisma.vendor.findUnique({ where: { id: input.vendorId } });
   if (!vendor) throw ApiError.notFound('Vendor not found.');
+
+  const existingItems = await prisma.purchaseItem.findMany({ where: { purchaseId: id } });
+  const existingByProductId = new Map(existingItems.map((it) => [it.productId, it]));
 
   const productIds = input.items.map((item) => item.productId);
   const products = await prisma.product.findMany({ where: { id: { in: productIds } } });
@@ -180,14 +184,20 @@ export async function updatePurchase(user: AuthenticatedUser, id: string, input:
     if (!product) throw ApiError.notFound(`Product ${line.productId} not found.`);
 
     const lineTotal = Math.round(line.unitCost * line.quantity * 100) / 100;
+    const prev = existingByProductId.get(product.id);
+    const receivedQuantity = prev ? Math.min(prev.receivedQuantity, line.quantity) : 0;
     return {
       productId: product.id,
       quantity: line.quantity,
-      receivedQuantity: 0,
+      receivedQuantity,
       unitCost: line.unitCost,
       lineTotal,
     };
   });
+
+  const allReceived = itemsData.every((it) => it.receivedQuantity >= it.quantity);
+  const anyReceived = itemsData.some((it) => it.receivedQuantity > 0);
+  const newStatus = allReceived ? 'RECEIVED' : anyReceived ? 'PARTIALLY_RECEIVED' : existing.status;
 
   await prisma.$transaction(
     async (tx) => {
@@ -196,6 +206,7 @@ export async function updatePurchase(user: AuthenticatedUser, id: string, input:
         where: { id },
         data: {
           vendorId: vendor.id,
+          status: newStatus,
           items: { create: itemsData },
         },
       });
