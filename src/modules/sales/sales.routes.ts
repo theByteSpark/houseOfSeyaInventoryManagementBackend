@@ -13,6 +13,4 @@ salesRoutes.get('/', asyncHandler(salesController.listSalesHandler));
 salesRoutes.get('/:id', asyncHandler(salesController.getSaleHandler));
 salesRoutes.post('/', validateBody(saleInputSchema), asyncHandler(salesController.createSaleHandler));
 salesRoutes.patch('/:id', validateBody(saleInputSchema), asyncHandler(salesController.updateSaleHandler));
-salesRoutes.patch('/:id/issue', asyncHandler(salesController.issueSaleHandler));
-salesRoutes.patch('/:id/pay', asyncHandler(salesController.markSalePaidHandler));
 salesRoutes.patch('/:id/cancel', asyncHandler(salesController.cancelSaleHandler));

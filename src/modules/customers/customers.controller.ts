@@ -12,8 +12,7 @@ export async function listCustomersHandler(req: Request, res: Response) {
   }
 
   const params = parsePaginationParams(req, SORTABLE_FIELDS);
-  const warehouseId = typeof req.query.warehouseId === 'string' && req.query.warehouseId ? req.query.warehouseId : undefined;
-  res.json(await customersService.listCustomersPaginated(params, warehouseId));
+  res.json(await customersService.listCustomersPaginated(params));
 }
 
 export async function getCustomerHandler(req: Request, res: Response) {

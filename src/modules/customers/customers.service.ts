@@ -26,11 +26,12 @@ export async function listCustomers() {
 
 export async function listCustomersPaginated(
   params: PaginationParams,
-  warehouseId?: string,
 ): Promise<PaginatedResult<ReturnType<typeof toDto>>> {
   const { page, pageSize, search, sortBy, sortDir } = params;
 
-  const searchFilter: Prisma.CustomerWhereInput = search
+  // Customers are global master data, not warehouse-scoped — a customer with
+  // no sales yet in a given warehouse must still be visible there.
+  const where: Prisma.CustomerWhereInput = search
     ? {
         OR: [
           { name: { contains: search, mode: 'insensitive' } },
@@ -39,10 +40,6 @@ export async function listCustomersPaginated(
         ],
       }
     : {};
-
-  const where: Prisma.CustomerWhereInput = warehouseId
-    ? { AND: [searchFilter, { sales: { some: { warehouseId } } }] }
-    : searchFilter;
 
   const orderBy: Prisma.CustomerOrderByWithRelationInput =
     sortBy === 'totalSales'
@@ -103,6 +100,13 @@ export async function updateCustomer(id: string, input: CustomerInput) {
 }
 
 export async function deleteCustomer(id: string) {
-  await getCustomer(id);
+  const customer = await prisma.customer.findUnique({
+    where: { id },
+    include: { _count: { select: { sales: true } } },
+  });
+  if (!customer) throw ApiError.notFound('Customer not found.');
+  if (customer._count.sales > 0) {
+    throw ApiError.badRequest('Cannot delete a customer that has sales.');
+  }
   await prisma.customer.delete({ where: { id } });
 }

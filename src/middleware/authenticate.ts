@@ -25,15 +25,18 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
   }
 
   const token = header.slice('Bearer '.length);
+  let payload;
   try {
-    const payload = verifyAccessToken(token);
-    const mapping = await prisma.userWarehouse.findUnique({
-      where: { userId: payload.sub },
-      select: { warehouseId: true },
-    });
-    req.user = { id: payload.sub, role: payload.role, warehouseId: mapping?.warehouseId ?? null };
-    next();
-  } catch {
+    payload = verifyAccessToken(token);
+  } catch (err) {
+    console.error('authenticate: token verification failed', err);
     throw ApiError.unauthorized('Invalid or expired access token');
   }
+
+  const mapping = await prisma.userWarehouse.findUnique({
+    where: { userId: payload.sub },
+    select: { warehouseId: true },
+  });
+  req.user = { id: payload.sub, role: payload.role, warehouseId: mapping?.warehouseId ?? null };
+  next();
 }

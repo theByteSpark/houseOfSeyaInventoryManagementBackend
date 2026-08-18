@@ -14,6 +14,9 @@ import { reportsRoutes } from '@/modules/reports/reports.routes';
 import { warehousesRoutes } from '@/modules/warehouses/warehouses.routes';
 import { importExportRoutes } from '@/modules/import-export/import-export.routes';
 import { notificationsRoutes } from '@/modules/notifications/notifications.routes';
+import { enquiriesRoutes } from '@/modules/enquiries/enquiries.routes';
+import { stockTransfersRoutes } from '@/modules/stock-transfers/stock-transfers.routes';
+import { stockConversionsRoutes } from '@/modules/stock-conversions/stock-conversions.routes';
 
 export const app = express();
 
@@ -50,6 +53,9 @@ app.use('/api/v1/reports', reportsRoutes);
 app.use('/api/v1/warehouses', warehousesRoutes);
 app.use('/api/v1/import', importExportRoutes);
 app.use('/api/v1/notifications', notificationsRoutes);
+app.use('/api/v1/enquiries', enquiriesRoutes);
+app.use('/api/v1/stock-transfers', stockTransfersRoutes);
+app.use('/api/v1/stock-conversions', stockConversionsRoutes);
 
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 

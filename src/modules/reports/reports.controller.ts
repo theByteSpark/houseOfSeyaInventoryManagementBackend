@@ -28,3 +28,9 @@ export async function getPurchasesReportHandler(req: Request, res: Response) {
 export async function getInventoryReportHandler(req: Request, res: Response) {
   res.json(await reportsService.getInventoryReport(requireUser(req), parseWarehouseId(req)));
 }
+
+export async function getRecentSalesByProductHandler(req: Request, res: Response) {
+  const rawDays = typeof req.query.days === 'string' ? Number(req.query.days) : NaN;
+  const days = Number.isFinite(rawDays) && rawDays > 0 ? rawDays : 3;
+  res.json(await reportsService.getRecentSalesByProduct(requireUser(req), days, parseWarehouseId(req)));
+}

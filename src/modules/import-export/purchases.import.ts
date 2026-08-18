@@ -75,9 +75,10 @@ export async function importPurchasesCsv(
           purchaseNumber,
           vendorId: vendor.id,
           warehouseId,
-          status: 'DRAFT',
+          status: 'ORDERED',
+          orderedAt: new Date(),
           items: {
-            create: [{ productId: product.id, quantity, receivedQuantity: 0, unitCost, lineTotal }],
+            create: [{ productId: product.id, quantity, unitCost, lineTotal }],
           },
         },
       });

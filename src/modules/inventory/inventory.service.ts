@@ -37,7 +37,6 @@ type ProductWithRelations = {
   sku: string;
   name: string;
   description: string | null;
-  unitPrice: Prisma.Decimal;
   reorderLevel: number;
   categoryId: string | null;
   category: { id: string; name: string } | null;
@@ -56,7 +55,6 @@ function toProductDto(product: ProductWithRelations, viewerWarehouseId: string |
     sku: product.sku,
     name: product.name,
     description: product.description,
-    unitPrice: Number(product.unitPrice),
     reorderLevel: product.reorderLevel,
     categoryId: product.categoryId,
     categoryName: product.category?.name ?? null,
@@ -76,25 +74,30 @@ const PRODUCT_INCLUDE = {
   stocks: { include: { warehouse: { select: { name: true } } } },
 } satisfies Prisma.ProductInclude;
 
-function scopeWarehouseId(user: AuthenticatedUser): string | null {
-  return isCompanyLevel(user) ? null : user.warehouseId;
+// Warehouse-scoped roles always see their own warehouse. Company-level roles
+// see the total across all warehouses unless they explicitly pick one (e.g.
+// via the header warehouse selector), in which case that selection wins.
+function scopeWarehouseId(user: AuthenticatedUser, explicitWarehouseId?: string): string | null {
+  if (isCompanyLevel(user)) return explicitWarehouseId ?? null;
+  return user.warehouseId;
 }
 
-export async function listProducts(user: AuthenticatedUser) {
+export async function listProducts(user: AuthenticatedUser, warehouseId?: string) {
   const products = await prisma.product.findMany({
     include: PRODUCT_INCLUDE,
     orderBy: { createdAt: 'desc' },
   });
-  return products.map((p) => toProductDto(p, scopeWarehouseId(user)));
+  return products.map((p) => toProductDto(p, scopeWarehouseId(user, warehouseId)));
 }
 
 export async function listProductsPaginated(
   user: AuthenticatedUser,
   params: PaginationParams,
   stockFilter: 'all' | 'low',
+  warehouseId?: string,
 ): Promise<PaginatedResult<ReturnType<typeof toProductDto>>> {
   const { page, pageSize, search, sortBy, sortDir } = params;
-  const viewerWarehouseId = scopeWarehouseId(user);
+  const viewerWarehouseId = scopeWarehouseId(user, warehouseId);
 
   const searchFilter: Prisma.ProductWhereInput = search
     ? {
@@ -123,7 +126,7 @@ export async function listProductsPaginated(
   const orderBy: Prisma.ProductOrderByWithRelationInput =
     sortBy === 'category'
       ? { category: { name: sortDir } }
-      : sortBy === 'name' || sortBy === 'sku' || sortBy === 'unitPrice' || sortBy === 'createdAt'
+      : sortBy === 'name' || sortBy === 'sku' || sortBy === 'createdAt'
         ? { [sortBy]: sortDir }
         : { createdAt: 'desc' };
 
@@ -159,7 +162,6 @@ export async function createProduct(user: AuthenticatedUser, input: ProductInput
       sku: input.sku,
       name: input.name,
       description: input.description || null,
-      unitPrice: input.unitPrice,
       reorderLevel: input.reorderLevel,
       categoryId: input.categoryId || null,
     },
@@ -202,7 +204,6 @@ export async function updateProduct(user: AuthenticatedUser, id: string, input: 
       sku: input.sku,
       name: input.name,
       description: input.description || null,
-      unitPrice: input.unitPrice,
       reorderLevel: input.reorderLevel,
       categoryId: input.categoryId || null,
     },
@@ -212,9 +213,32 @@ export async function updateProduct(user: AuthenticatedUser, id: string, input: 
 }
 
 export async function deleteProduct(id: string) {
-  const product = await prisma.product.findUnique({ where: { id } });
+  const product = await prisma.product.findUnique({
+    where: { id },
+    include: {
+      _count: {
+        select: {
+          saleItems: { where: { sale: { status: { not: 'CANCELLED' } } } },
+          purchaseItems: { where: { purchase: { status: { not: 'CANCELLED' } } } },
+          enquiries: true,
+        },
+      },
+    },
+  });
   if (!product) throw ApiError.notFound('Product not found.');
-  await prisma.product.delete({ where: { id } });
+  const { saleItems, purchaseItems, enquiries } = product._count;
+  if (saleItems > 0 || purchaseItems > 0 || enquiries > 0) {
+    throw ApiError.badRequest(
+      'Cannot delete a product that has active sales, purchases, or enquiries linked to it.',
+    );
+  }
+  await prisma.$transaction([
+    prisma.saleItem.deleteMany({ where: { productId: id, sale: { status: 'CANCELLED' } } }),
+    prisma.purchaseItem.deleteMany({ where: { productId: id, purchase: { status: 'CANCELLED' } } }),
+    prisma.stockMovement.deleteMany({ where: { productId: id } }),
+    prisma.productStock.deleteMany({ where: { productId: id } }),
+    prisma.product.delete({ where: { id } }),
+  ]);
 }
 
 export async function restockProduct(user: AuthenticatedUser, id: string, input: RestockInput) {

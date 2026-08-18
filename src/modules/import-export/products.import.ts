@@ -4,12 +4,12 @@ import { parseCsvObjects, toCsv } from '@/utils/csv';
 import type { AuthenticatedUser } from '@/middleware/authenticate';
 import { requireWarehouseId } from '@/utils/warehouseScope';
 
-const TEMPLATE_HEADERS = ['sku', 'name', 'description', 'category', 'unitPrice', 'reorderLevel', 'quantity'];
+const TEMPLATE_HEADERS = ['sku', 'name', 'description', 'category', 'reorderLevel', 'quantity'];
 
 export function buildProductImportTemplate(): string {
   return toCsv(TEMPLATE_HEADERS, [
-    ['FAB-COT-001', 'Cotton Poplin — Ivory', 'Premium combed cotton poplin, 60" width', 'Fabrics', '8.50', '50', '100'],
-    ['TRM-ZIP-021', 'Invisible Zippers — 22" Navy', 'Pack of 20', 'Trims & Accessories', '15.40', '10', '20'],
+    ['FAB-COT-001', 'Cotton Poplin — Ivory', 'Premium combed cotton poplin, 60" width', 'Fabrics', '50', '100'],
+    ['TRM-ZIP-021', 'Invisible Zippers — 22" Navy', 'Pack of 20', 'Trims & Accessories', '10', '20'],
   ]);
 }
 
@@ -47,9 +47,6 @@ export async function importProductsCsv(
       const name = raw.name?.trim();
       if (!name) throw new Error('name is required');
 
-      const unitPrice = Number(raw.unitPrice);
-      if (!Number.isFinite(unitPrice) || unitPrice <= 0) throw new Error('unitPrice must be a positive number');
-
       const reorderLevel = Number(raw.reorderLevel || 0);
       if (!Number.isInteger(reorderLevel) || reorderLevel < 0) throw new Error('reorderLevel must be a non-negative integer');
 
@@ -74,7 +71,6 @@ export async function importProductsCsv(
         update: {
           name,
           description: raw.description?.trim() || null,
-          unitPrice,
           reorderLevel,
           categoryId,
         },
@@ -82,7 +78,6 @@ export async function importProductsCsv(
           sku,
           name,
           description: raw.description?.trim() || null,
-          unitPrice,
           reorderLevel,
           categoryId,
         },

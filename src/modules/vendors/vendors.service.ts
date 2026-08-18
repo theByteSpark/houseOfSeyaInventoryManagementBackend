@@ -16,7 +16,6 @@ const VENDOR_INCLUDE = {
         select: {
           productId: true,
           quantity: true,
-          receivedQuantity: true,
           product: { select: { name: true } },
         },
       },
@@ -57,11 +56,12 @@ export async function listVendors() {
 
 export async function listVendorsPaginated(
   params: PaginationParams,
-  warehouseId?: string,
 ): Promise<PaginatedResult<ReturnType<typeof toDto>>> {
   const { page, pageSize, search, sortBy, sortDir } = params;
 
-  const searchFilter: Prisma.VendorWhereInput = search
+  // Vendors are global master data, not warehouse-scoped — a vendor with no
+  // purchases yet in a given warehouse must still be visible there.
+  const where: Prisma.VendorWhereInput = search
     ? {
         OR: [
           { companyName: { contains: search, mode: 'insensitive' } },
@@ -71,10 +71,6 @@ export async function listVendorsPaginated(
         ],
       }
     : {};
-
-  const where: Prisma.VendorWhereInput = warehouseId
-    ? { AND: [searchFilter, { purchases: { some: { warehouseId } } }] }
-    : searchFilter;
 
   const orderBy: Prisma.VendorOrderByWithRelationInput =
     sortBy === 'totalOrders'

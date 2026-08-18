@@ -6,7 +6,7 @@ import type { AuthenticatedUser } from '@/middleware/authenticate';
 import { isCompanyLevel, requireWarehouseId } from '@/utils/warehouseScope';
 import { addStockInTransaction, checkLowStock } from '@/modules/inventory/inventory.service';
 import { createNotification } from '@/modules/notifications/notifications.service';
-import type { PurchaseInput, ReceiveInput } from './purchases.validation';
+import type { PurchaseInput } from './purchases.validation';
 
 const PURCHASE_INCLUDE = {
   vendor: { select: { companyName: true, contactPerson: true, email: true, phone: true, address: true } },
@@ -23,7 +23,6 @@ function toDto(purchase: PurchaseWithRelations) {
     productName: item.product.name,
     sku: item.product.sku,
     quantity: item.quantity,
-    receivedQuantity: item.receivedQuantity,
     unitCost: Number(item.unitCost),
     lineTotal: Number(item.lineTotal),
   }));
@@ -61,14 +60,21 @@ function scopeWarehouseWhere(user: AuthenticatedUser, warehouseId?: string): Pri
   return warehouseId ? { warehouseId } : {};
 }
 
-export async function listPurchases(user: AuthenticatedUser) {
+export async function listPurchases(user: AuthenticatedUser, statusFilter?: PurchaseStatus | 'ALL', warehouseId?: string) {
+  const where: Prisma.PurchaseWhereInput = {
+    AND: [
+      scopeWarehouseWhere(user, warehouseId),
+      ...(!statusFilter || statusFilter === 'ALL' ? [] : [{ status: statusFilter }]),
+    ],
+  };
   const purchases = await prisma.purchase.findMany({
-    where: scopeWarehouseWhere(user),
+    where,
     include: PURCHASE_INCLUDE,
     orderBy: { createdAt: 'desc' },
   });
   return purchases.map(toDto);
 }
+// (statusFilter/warehouseId are optional so existing callers with just `user` keep working)
 
 export async function listPurchasesPaginated(
   user: AuthenticatedUser,
@@ -141,7 +147,6 @@ export async function createPurchase(user: AuthenticatedUser, input: PurchaseInp
     return {
       productId: product.id,
       quantity: line.quantity,
-      receivedQuantity: 0,
       unitCost: line.unitCost,
       lineTotal,
     };
@@ -154,7 +159,8 @@ export async function createPurchase(user: AuthenticatedUser, input: PurchaseInp
       purchaseNumber,
       vendorId: vendor.id,
       warehouseId,
-      status: 'DRAFT',
+      status: 'ORDERED',
+      orderedAt: new Date(),
       items: { create: itemsData },
     },
     include: PURCHASE_INCLUDE,
@@ -166,7 +172,7 @@ export async function createPurchase(user: AuthenticatedUser, input: PurchaseInp
 export async function updatePurchase(user: AuthenticatedUser, id: string, input: PurchaseInput) {
   const existing = await prisma.purchase.findFirst({ where: { id, ...scopeWarehouseWhere(user) } });
   if (!existing) throw ApiError.notFound('Purchase not found.');
-  if (existing.status !== 'DRAFT') throw ApiError.badRequest('Only draft purchases can be edited.');
+  if (existing.status !== 'ORDERED') throw ApiError.badRequest('Only ordered purchases can be edited.');
 
   const vendor = await prisma.vendor.findUnique({ where: { id: input.vendorId } });
   if (!vendor) throw ApiError.notFound('Vendor not found.');
@@ -183,7 +189,6 @@ export async function updatePurchase(user: AuthenticatedUser, id: string, input:
     return {
       productId: product.id,
       quantity: line.quantity,
-      receivedQuantity: 0,
       unitCost: line.unitCost,
       lineTotal,
     };
@@ -206,85 +211,62 @@ export async function updatePurchase(user: AuthenticatedUser, id: string, input:
   return getPurchase(user, id);
 }
 
-export async function orderPurchase(user: AuthenticatedUser, id: string) {
+// Moves a purchase from ORDERED to INWARD_TRANSIT. No stock effects — stock is
+// only added once the purchase reaches IN_STOCK.
+export async function markPurchaseInwardTransit(user: AuthenticatedUser, id: string) {
   const purchase = await prisma.purchase.findFirst({ where: { id, ...scopeWarehouseWhere(user) } });
   if (!purchase) throw ApiError.notFound('Purchase not found.');
-  if (purchase.status !== 'DRAFT') throw ApiError.badRequest('Only draft purchases can be ordered.');
+  if (purchase.status !== 'ORDERED') {
+    throw ApiError.badRequest('Only ordered purchases can be moved to inward transit.');
+  }
 
   const updated = await prisma.purchase.update({
     where: { id },
-    data: { status: 'ORDERED', orderedAt: new Date() },
+    data: { status: 'INWARD_TRANSIT' },
     include: PURCHASE_INCLUDE,
   });
 
   return toDto(updated);
 }
 
-export async function receivePurchaseItems(user: AuthenticatedUser, id: string, input: ReceiveInput) {
+// Moves a purchase from INWARD_TRANSIT to IN_STOCK. This is the only
+// transition that adds stock: every PurchaseItem's quantity is added to
+// ProductStock for (productId, warehouseId), with a RESTOCK StockMovement
+// recorded per item, all inside one transaction.
+export async function markPurchaseInStock(user: AuthenticatedUser, id: string) {
   const purchase = await prisma.purchase.findFirst({
     where: { id, ...scopeWarehouseWhere(user) },
     include: { items: true },
   });
   if (!purchase) throw ApiError.notFound('Purchase not found.');
-  if (purchase.status !== 'ORDERED' && purchase.status !== 'PARTIALLY_RECEIVED') {
-    throw ApiError.badRequest('Only ordered or partially received purchases can receive items.');
-  }
-
-  const itemById = new Map(purchase.items.map((item) => [item.productId, item]));
-
-  const updates: { productId: string; qty: number }[] = [];
-  for (const line of input.items) {
-    const item = itemById.get(line.productId);
-    if (!item) throw ApiError.badRequest(`Product ${line.productId} is not in this purchase.`);
-
-    const remaining = item.quantity - item.receivedQuantity;
-    if (line.receivedQty < 0) throw ApiError.badRequest('Received quantity cannot be negative.');
-    if (line.receivedQty > remaining) {
-      throw ApiError.badRequest(`Cannot receive more than ${remaining} remaining for ${item.productId}.`);
-    }
-    if (line.receivedQty > 0) {
-      updates.push({ productId: line.productId, qty: line.receivedQty });
-    }
-  }
-
-  if (updates.length === 0) {
-    throw ApiError.badRequest('No items to receive.');
+  if (purchase.status !== 'INWARD_TRANSIT') {
+    throw ApiError.badRequest('Only purchases in inward transit can be marked as in stock.');
   }
 
   await prisma.$transaction(
     async (tx) => {
-      for (const update of updates) {
-        const item = itemById.get(update.productId)!;
-        await tx.purchaseItem.update({
-          where: { id: item.id },
-          data: { receivedQuantity: { increment: update.qty } },
-        });
-        for (const op of addStockInTransaction(tx, update.productId, purchase.warehouseId, update.qty, `PO ${purchase.purchaseNumber}`)) {
+      for (const item of purchase.items) {
+        for (const op of addStockInTransaction(tx, item.productId, purchase.warehouseId, item.quantity, `PO ${purchase.purchaseNumber}`)) {
           await op;
         }
       }
 
-      const allItems = await tx.purchaseItem.findMany({ where: { purchaseId: id } });
-      const allReceived = allItems.every((item) => item.receivedQuantity >= item.quantity);
-
       await tx.purchase.update({
         where: { id },
-        data: allReceived
-          ? { status: 'RECEIVED', receivedAt: new Date() }
-          : { status: 'PARTIALLY_RECEIVED' },
+        data: { status: 'IN_STOCK', receivedAt: new Date() },
       });
     },
     { timeout: 15000, maxWait: 15000 },
   );
 
-  for (const update of updates) {
-    await checkLowStock(update.productId, purchase.warehouseId);
+  for (const item of purchase.items) {
+    await checkLowStock(item.productId, purchase.warehouseId);
   }
   await createNotification({
     warehouseId: purchase.warehouseId,
     type: 'PURCHASE_RECEIVED',
     title: 'Purchase received',
-    message: `Purchase order ${purchase.purchaseNumber} received a stock delivery.`,
+    message: `Purchase order ${purchase.purchaseNumber} is now in stock.`,
     metadata: { purchaseId: purchase.id, purchaseNumber: purchase.purchaseNumber },
   });
 
@@ -294,7 +276,9 @@ export async function receivePurchaseItems(user: AuthenticatedUser, id: string, 
 export async function cancelPurchase(user: AuthenticatedUser, id: string) {
   const purchase = await prisma.purchase.findFirst({ where: { id, ...scopeWarehouseWhere(user) } });
   if (!purchase) throw ApiError.notFound('Purchase not found.');
-  if (purchase.status === 'RECEIVED') throw ApiError.badRequest('A received purchase cannot be cancelled.');
+  if (purchase.status === 'IN_STOCK') {
+    throw ApiError.badRequest('A purchase that is already in stock cannot be cancelled.');
+  }
   if (purchase.status === 'CANCELLED') throw ApiError.badRequest('Purchase is already cancelled.');
 
   const updated = await prisma.purchase.update({

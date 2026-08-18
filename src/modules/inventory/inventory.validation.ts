@@ -4,7 +4,6 @@ export const productInputSchema = z.object({
   sku: z.string().min(1),
   name: z.string().min(1),
   description: z.string().optional(),
-  unitPrice: z.coerce.number().positive(),
   reorderLevel: z.coerce.number().int().min(0),
   categoryId: z.string().optional().or(z.literal('')),
   quantityInStock: z.coerce.number().int().min(0).optional(),

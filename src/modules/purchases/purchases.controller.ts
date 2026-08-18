@@ -6,33 +6,31 @@ import { ApiError } from '@/utils/apiError';
 import * as purchasesService from './purchases.service';
 
 const SORTABLE_FIELDS = ['purchaseNumber', 'vendor', 'status', 'createdAt'];
-const PURCHASE_STATUSES: PurchaseStatus[] = [
-  'DRAFT',
-  'ORDERED',
-  'PARTIALLY_RECEIVED',
-  'RECEIVED',
-  'CANCELLED',
-];
+const PURCHASE_STATUSES: PurchaseStatus[] = ['ORDERED', 'INWARD_TRANSIT', 'IN_STOCK', 'CANCELLED'];
 
 function requireUser(req: Request) {
   if (!req.user) throw ApiError.unauthorized();
   return req.user;
 }
 
+function parseStatusFilter(req: Request): PurchaseStatus | 'ALL' {
+  const rawStatus = typeof req.query.status === 'string' ? req.query.status.toUpperCase() : 'ALL';
+  return PURCHASE_STATUSES.includes(rawStatus as PurchaseStatus) ? (rawStatus as PurchaseStatus) : 'ALL';
+}
+
+function parseWarehouseId(req: Request): string | undefined {
+  return typeof req.query.warehouseId === 'string' && req.query.warehouseId ? req.query.warehouseId : undefined;
+}
+
 export async function listPurchasesHandler(req: Request, res: Response) {
   const user = requireUser(req);
   if (!isPaginationRequested(req)) {
-    res.json(await purchasesService.listPurchases(user));
+    res.json(await purchasesService.listPurchases(user, parseStatusFilter(req), parseWarehouseId(req)));
     return;
   }
 
   const params = parsePaginationParams(req, SORTABLE_FIELDS);
-  const rawStatus = typeof req.query.status === 'string' ? req.query.status.toUpperCase() : 'ALL';
-  const statusFilter = PURCHASE_STATUSES.includes(rawStatus as PurchaseStatus)
-    ? (rawStatus as PurchaseStatus)
-    : 'ALL';
-  const warehouseId = typeof req.query.warehouseId === 'string' && req.query.warehouseId ? req.query.warehouseId : undefined;
-  res.json(await purchasesService.listPurchasesPaginated(user, params, statusFilter, warehouseId));
+  res.json(await purchasesService.listPurchasesPaginated(user, params, parseStatusFilter(req), parseWarehouseId(req)));
 }
 
 export async function getPurchaseHandler(req: Request, res: Response) {
@@ -47,12 +45,12 @@ export async function updatePurchaseHandler(req: Request, res: Response) {
   res.json(await purchasesService.updatePurchase(requireUser(req), requireParam(req, 'id'), req.body));
 }
 
-export async function orderPurchaseHandler(req: Request, res: Response) {
-  res.json(await purchasesService.orderPurchase(requireUser(req), requireParam(req, 'id')));
+export async function inwardTransitPurchaseHandler(req: Request, res: Response) {
+  res.json(await purchasesService.markPurchaseInwardTransit(requireUser(req), requireParam(req, 'id')));
 }
 
-export async function receivePurchaseHandler(req: Request, res: Response) {
-  res.json(await purchasesService.receivePurchaseItems(requireUser(req), requireParam(req, 'id'), req.body));
+export async function inStockPurchaseHandler(req: Request, res: Response) {
+  res.json(await purchasesService.markPurchaseInStock(requireUser(req), requireParam(req, 'id')));
 }
 
 export async function cancelPurchaseHandler(req: Request, res: Response) {

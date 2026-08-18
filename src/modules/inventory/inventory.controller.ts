@@ -4,7 +4,7 @@ import { isPaginationRequested, parsePaginationParams } from '@/utils/pagination
 import { ApiError } from '@/utils/apiError';
 import * as inventoryService from './inventory.service';
 
-const PRODUCT_SORTABLE_FIELDS = ['name', 'sku', 'category', 'unitPrice', 'createdAt'];
+const PRODUCT_SORTABLE_FIELDS = ['name', 'sku', 'category', 'createdAt'];
 const CATEGORY_SORTABLE_FIELDS = ['name', 'productCount'];
 
 function requireUser(req: Request) {
@@ -14,14 +14,15 @@ function requireUser(req: Request) {
 
 export async function listProductsHandler(req: Request, res: Response) {
   const user = requireUser(req);
+  const warehouseId = typeof req.query.warehouseId === 'string' ? req.query.warehouseId : undefined;
   if (!isPaginationRequested(req)) {
-    res.json(await inventoryService.listProducts(user));
+    res.json(await inventoryService.listProducts(user, warehouseId));
     return;
   }
 
   const params = parsePaginationParams(req, PRODUCT_SORTABLE_FIELDS);
   const stockFilter = req.query.stockFilter === 'low' ? 'low' : 'all';
-  res.json(await inventoryService.listProductsPaginated(user, params, stockFilter));
+  res.json(await inventoryService.listProductsPaginated(user, params, stockFilter, warehouseId));
 }
 
 export async function getProductHandler(req: Request, res: Response) {

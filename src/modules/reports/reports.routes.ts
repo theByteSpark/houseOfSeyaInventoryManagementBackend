@@ -10,3 +10,4 @@ reportsRoutes.use(authenticate);
 reportsRoutes.get('/sales', asyncHandler(reportsController.getSalesReportHandler));
 reportsRoutes.get('/purchases', asyncHandler(reportsController.getPurchasesReportHandler));
 reportsRoutes.get('/inventory', asyncHandler(reportsController.getInventoryReportHandler));
+reportsRoutes.get('/recent-sales-by-product', asyncHandler(reportsController.getRecentSalesByProductHandler));

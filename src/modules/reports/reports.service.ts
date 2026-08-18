@@ -201,7 +201,8 @@ export async function getInventoryReport(user: AuthenticatedUser, warehouseIdFil
     quantityInStock: p.stocks.reduce((sum, s) => sum + s.quantity, 0),
   }));
 
-  const totalStockValue = withQuantity.reduce((sum, p) => sum + Number(p.unitPrice) * p.quantityInStock, 0);
+  // Pricing now lives on transaction line items, not the Product master
+  // record, so there's no per-product price to value stock against here.
   const lowStockProducts = withQuantity
     .filter((p) => p.quantityInStock <= p.reorderLevel)
     .sort((a, b) => a.quantityInStock - b.quantityInStock)
@@ -209,17 +210,15 @@ export async function getInventoryReport(user: AuthenticatedUser, warehouseIdFil
 
   const categoryBreakdown = categories.map((cat) => {
     const categoryProducts = withQuantity.filter((p) => p.category?.name === cat.name);
-    const stockValue = categoryProducts.reduce((sum, p) => sum + Number(p.unitPrice) * p.quantityInStock, 0);
     return {
       category: cat.name,
       productCount: cat._count.products,
-      stockValue,
+      totalQuantity: categoryProducts.reduce((sum, p) => sum + p.quantityInStock, 0),
     };
   });
 
   return {
     totalProducts: withQuantity.length,
-    totalStockValue,
     lowStockCount: lowStockProducts.length,
     lowStockProducts: lowStockProducts.map((p) => ({
       id: p.id,
@@ -239,4 +238,38 @@ export async function getInventoryReport(user: AuthenticatedUser, warehouseIdFil
       createdAt: m.createdAt,
     })),
   };
+}
+
+// Sales line items from the last N days, listed by product (not by
+// customer), sorted by sale date descending. Backs the new dashboard's
+// "recent sales" table.
+export async function getRecentSalesByProduct(
+  user: AuthenticatedUser,
+  days = 3,
+  warehouseId?: string,
+) {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  since.setHours(0, 0, 0, 0);
+
+  const where: Prisma.SaleWhereInput = {
+    AND: [{ createdAt: { gte: since } }, scopeSaleWarehouseWhere(user, warehouseId)],
+  };
+
+  const saleItems = await prisma.saleItem.findMany({
+    where: { sale: where },
+    include: {
+      product: { select: { id: true, name: true } },
+      sale: { select: { createdAt: true } },
+    },
+    orderBy: { sale: { createdAt: 'desc' } },
+  });
+
+  return saleItems.map((item) => ({
+    productId: item.productId,
+    productName: item.product.name,
+    quantity: item.quantity,
+    unitPrice: Number(item.unitPrice),
+    date: item.sale.createdAt,
+  }));
 }
