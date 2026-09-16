@@ -7,6 +7,26 @@ import { isCompanyLevel, requireWarehouseId } from '@/utils/warehouseScope';
 import { createNotification } from '@/modules/notifications/notifications.service';
 import type { CategoryInput, ProductInput, RestockInput } from './inventory.validation';
 
+// Derives a SKU from the product name (e.g. "Cotton Poplin — Ivory" ->
+// "COTTON-POPLIN-IVORY") since the UI no longer collects one directly.
+// Appends a numeric suffix on collision to keep the field unique.
+async function generateUniqueSku(name: string): Promise<string> {
+  const base =
+    name
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40) || 'PRODUCT';
+
+  let candidate = base;
+  let suffix = 1;
+  while (await prisma.product.findUnique({ where: { sku: candidate } })) {
+    suffix += 1;
+    candidate = `${base}-${suffix}`;
+  }
+  return candidate;
+}
+
 // Fires a LOW_STOCK notification if the product's stock at this warehouse is
 // now at or below its reorder level. Best-effort — never blocks the caller.
 export async function checkLowStock(productId: string, warehouseId: string) {
@@ -154,12 +174,17 @@ export async function getProduct(user: AuthenticatedUser, id: string) {
 }
 
 export async function createProduct(user: AuthenticatedUser, input: ProductInput) {
-  const existing = await prisma.product.findUnique({ where: { sku: input.sku } });
-  if (existing) throw ApiError.conflict('A product with this SKU already exists.');
+  let sku = input.sku;
+  if (sku) {
+    const existing = await prisma.product.findUnique({ where: { sku } });
+    if (existing) throw ApiError.conflict('A product with this SKU already exists.');
+  } else {
+    sku = await generateUniqueSku(input.name);
+  }
 
   const product = await prisma.product.create({
     data: {
-      sku: input.sku,
+      sku,
       name: input.name,
       description: input.description || null,
       reorderLevel: input.reorderLevel,
@@ -193,15 +218,17 @@ export async function updateProduct(user: AuthenticatedUser, id: string, input: 
   const current = await prisma.product.findUnique({ where: { id } });
   if (!current) throw ApiError.notFound('Product not found.');
 
-  if (input.sku !== current.sku) {
+  let sku = current.sku;
+  if (input.sku && input.sku !== current.sku) {
     const existing = await prisma.product.findUnique({ where: { sku: input.sku } });
     if (existing) throw ApiError.conflict('A product with this SKU already exists.');
+    sku = input.sku;
   }
 
   await prisma.product.update({
     where: { id },
     data: {
-      sku: input.sku,
+      sku,
       name: input.name,
       description: input.description || null,
       reorderLevel: input.reorderLevel,

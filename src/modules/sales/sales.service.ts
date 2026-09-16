@@ -8,6 +8,9 @@ import { checkLowStock } from '@/modules/inventory/inventory.service';
 import { createNotification } from '@/modules/notifications/notifications.service';
 import type { SaleInput } from './sales.validation';
 
+// Tax is a flat rate across all products — not user-configurable per sale.
+export const SALES_TAX_RATE = 0.18;
+
 const SALE_INCLUDE = {
   customer: { select: { name: true, email: true, phone: true, address: true } },
   warehouse: { select: { name: true } },
@@ -160,8 +163,7 @@ export async function createSale(user: AuthenticatedUser, input: SaleInput) {
   });
 
   subtotal = Math.round(subtotal * 100) / 100;
-  const taxRate = input.taxRate ?? 0.1;
-  const tax = Math.round(subtotal * taxRate * 100) / 100;
+  const tax = Math.round(subtotal * SALES_TAX_RATE * 100) / 100;
   const total = Math.round((subtotal + tax) * 100) / 100;
 
   const saleNumber = await nextSaleNumber();
