@@ -6,7 +6,7 @@ import type { PurchaseInput, ReceiveInput } from './purchases.validation';
 
 const PURCHASE_INCLUDE = {
   vendor: { select: { companyName: true, contactPerson: true, email: true, phone: true, address: true } },
-  items: { include: { product: { select: { name: true, sku: true } } } },
+  items: { include: { product: { select: { name: true, designNumber: true } } } },
 } satisfies Prisma.PurchaseInclude;
 
 type PurchaseWithRelations = Prisma.PurchaseGetPayload<{ include: typeof PURCHASE_INCLUDE }>;
@@ -16,7 +16,7 @@ function toDto(purchase: PurchaseWithRelations) {
     id: item.id,
     productId: item.productId,
     productName: item.product.name,
-    sku: item.product.sku,
+    designNumber: item.product.designNumber,
     quantity: item.quantity,
     receivedQuantity: item.receivedQuantity,
     unitCost: Number(item.unitCost),

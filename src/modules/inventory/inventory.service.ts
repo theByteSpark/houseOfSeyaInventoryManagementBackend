@@ -2,26 +2,86 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/config/db';
 import { ApiError } from '@/utils/apiError';
 import type { PaginatedResult, PaginationParams } from '@/utils/pagination';
-import type { CategoryInput, ProductInput, RestockInput, SubcategoryInput } from './inventory.validation';
+import type { CategoryInput, DiamondInput, ProductInput, RestockInput, SubcategoryInput } from './inventory.validation';
+
+const TAX_RATE = 0.03;
+
+function toDiamondDto(diamond: {
+  id: string;
+  shape: string;
+  quality: string;
+  pieces: number;
+  caratWeight: Prisma.Decimal;
+  weight: Prisma.Decimal;
+  rate: Prisma.Decimal;
+}) {
+  const caratWeight = Number(diamond.caratWeight);
+  const rate = Number(diamond.rate);
+  return {
+    id: diamond.id,
+    shape: diamond.shape,
+    quality: diamond.quality,
+    pieces: diamond.pieces,
+    caratWeight,
+    weight: Number(diamond.weight),
+    rate,
+    amount: Math.round(caratWeight * rate * 100) / 100,
+  };
+}
 
 function toProductDto(product: {
   id: string;
-  sku: string;
+  designNumber: string;
   name: string;
-  description: string | null;
-  unitPrice: Prisma.Decimal;
+  metalType: string | null;
+  grossWeight: Prisma.Decimal | null;
+  metalRatePerGram: Prisma.Decimal | null;
+  makingChargePerGram: Prisma.Decimal | null;
+  fixedExpense: Prisma.Decimal;
+  sellingPrice: Prisma.Decimal;
   quantityInStock: number;
   reorderLevel: number;
   subcategoryId: string | null;
   subcategory: { name: string; category: { id: string; name: string } } | null;
+  diamonds: Parameters<typeof toDiamondDto>[0][];
   createdAt: Date;
 }) {
+  const grossWeight = product.grossWeight !== null ? Number(product.grossWeight) : null;
+  const metalRatePerGram = product.metalRatePerGram !== null ? Number(product.metalRatePerGram) : null;
+  const makingChargePerGram = product.makingChargePerGram !== null ? Number(product.makingChargePerGram) : null;
+  const fixedExpense = Number(product.fixedExpense);
+
+  const metalCost = grossWeight !== null && metalRatePerGram !== null
+    ? Math.round(grossWeight * metalRatePerGram * 100) / 100
+    : 0;
+  const labourCost = grossWeight !== null && makingChargePerGram !== null
+    ? Math.round(grossWeight * makingChargePerGram * 100) / 100
+    : 0;
+
+  const diamonds = product.diamonds.map(toDiamondDto);
+  const totalDiamondCost = Math.round(diamonds.reduce((sum, d) => sum + d.amount, 0) * 100) / 100;
+
+  const totalCost = Math.round((metalCost + totalDiamondCost + labourCost + fixedExpense) * 100) / 100;
+  const taxAmount = Math.round(totalCost * TAX_RATE * 100) / 100;
+  const finalAmount = Math.round((totalCost + taxAmount) * 100) / 100;
+
   return {
     id: product.id,
-    sku: product.sku,
+    designNumber: product.designNumber,
     name: product.name,
-    description: product.description,
-    unitPrice: Number(product.unitPrice),
+    metalType: product.metalType,
+    grossWeight,
+    metalRatePerGram,
+    metalCost,
+    diamonds,
+    totalDiamondCost,
+    makingChargePerGram,
+    labourCost,
+    fixedExpense,
+    totalCost,
+    taxAmount,
+    finalAmount,
+    sellingPrice: Number(product.sellingPrice),
     quantityInStock: product.quantityInStock,
     reorderLevel: product.reorderLevel,
     subcategoryId: product.subcategoryId,
@@ -34,7 +94,19 @@ function toProductDto(product: {
 
 const PRODUCT_INCLUDE = {
   subcategory: { include: { category: { select: { id: true, name: true } } } },
+  diamonds: true,
 } satisfies Prisma.ProductInclude;
+
+function toDiamondCreateData(diamonds: DiamondInput[]) {
+  return diamonds.map((d) => ({
+    shape: d.shape,
+    quality: d.quality,
+    pieces: d.pieces,
+    caratWeight: d.caratWeight,
+    weight: d.weight,
+    rate: d.rate,
+  }));
+}
 
 export async function listProducts() {
   const products = await prisma.product.findMany({
@@ -54,6 +126,7 @@ export async function listProductsPaginated(
     ? {
         OR: [
           { name: { contains: search, mode: 'insensitive' } },
+          { designNumber: { contains: search, mode: 'insensitive' } },
           { subcategory: { name: { contains: search, mode: 'insensitive' } } },
           { subcategory: { category: { name: { contains: search, mode: 'insensitive' } } } },
         ],
@@ -73,7 +146,7 @@ export async function listProductsPaginated(
   const orderBy: Prisma.ProductOrderByWithRelationInput =
     sortBy === 'subcategory'
       ? { subcategory: { name: sortDir } }
-      : sortBy === 'name' || sortBy === 'sku' || sortBy === 'unitPrice' || sortBy === 'quantityInStock' || sortBy === 'createdAt'
+      : sortBy === 'name' || sortBy === 'designNumber' || sortBy === 'sellingPrice' || sortBy === 'quantityInStock' || sortBy === 'createdAt'
         ? { [sortBy]: sortDir }
         : { createdAt: 'desc' };
 
@@ -101,18 +174,23 @@ export async function getProduct(id: string) {
 }
 
 export async function createProduct(input: ProductInput) {
-  const existing = await prisma.product.findUnique({ where: { sku: input.sku } });
-  if (existing) throw ApiError.conflict('A product with this SKU already exists.');
+  const existing = await prisma.product.findUnique({ where: { designNumber: input.designNumber } });
+  if (existing) throw ApiError.conflict('A product with this design number already exists.');
 
   const product = await prisma.product.create({
     data: {
-      sku: input.sku,
+      designNumber: input.designNumber,
       name: input.name,
-      description: input.description || null,
-      unitPrice: input.unitPrice,
+      metalType: input.metalType,
+      grossWeight: input.grossWeight,
+      metalRatePerGram: input.metalRatePerGram,
+      makingChargePerGram: input.makingChargePerGram,
+      fixedExpense: input.fixedExpense,
+      sellingPrice: input.sellingPrice,
       quantityInStock: input.quantityInStock,
       reorderLevel: input.reorderLevel,
       subcategoryId: input.subcategoryId || null,
+      diamonds: { create: toDiamondCreateData(input.diamonds) },
     },
     include: PRODUCT_INCLUDE,
   });
@@ -135,31 +213,41 @@ export async function updateProduct(id: string, input: ProductInput) {
   const current = await prisma.product.findUnique({ where: { id } });
   if (!current) throw ApiError.notFound('Product not found.');
 
-  if (input.sku !== current.sku) {
-    const existing = await prisma.product.findUnique({ where: { sku: input.sku } });
-    if (existing) throw ApiError.conflict('A product with this SKU already exists.');
+  if (input.designNumber !== current.designNumber) {
+    const existing = await prisma.product.findUnique({ where: { designNumber: input.designNumber } });
+    if (existing) throw ApiError.conflict('A product with this design number already exists.');
   }
 
-  const product = await prisma.product.update({
-    where: { id },
-    data: {
-      sku: input.sku,
-      name: input.name,
-      description: input.description || null,
-      unitPrice: input.unitPrice,
-      reorderLevel: input.reorderLevel,
-      subcategoryId: input.subcategoryId || null,
-    },
-    include: PRODUCT_INCLUDE,
+  await prisma.$transaction(async (tx) => {
+    await tx.productDiamond.deleteMany({ where: { productId: id } });
+    await tx.product.update({
+      where: { id },
+      data: {
+        designNumber: input.designNumber,
+        name: input.name,
+        metalType: input.metalType,
+        grossWeight: input.grossWeight,
+        metalRatePerGram: input.metalRatePerGram,
+        makingChargePerGram: input.makingChargePerGram,
+        fixedExpense: input.fixedExpense,
+        sellingPrice: input.sellingPrice,
+        reorderLevel: input.reorderLevel,
+        subcategoryId: input.subcategoryId || null,
+        diamonds: { create: toDiamondCreateData(input.diamonds) },
+      },
+    });
   });
 
-  return toProductDto(product);
+  return getProduct(id);
 }
 
 export async function deleteProduct(id: string) {
   const product = await prisma.product.findUnique({ where: { id } });
   if (!product) throw ApiError.notFound('Product not found.');
-  await prisma.product.delete({ where: { id } });
+  await prisma.$transaction([
+    prisma.productDiamond.deleteMany({ where: { productId: id } }),
+    prisma.product.delete({ where: { id } }),
+  ]);
 }
 
 export async function restockProduct(id: string, input: RestockInput) {

@@ -7,7 +7,7 @@ import type { SaleInput } from './sales.validation';
 
 const SALE_INCLUDE = {
   customer: { select: { name: true, email: true, phone: true, address: true } },
-  items: { include: { product: { select: { name: true, sku: true } } } },
+  items: { include: { product: { select: { name: true, designNumber: true } } } },
 } satisfies Prisma.SaleInclude;
 
 type SaleWithRelations = Prisma.SaleGetPayload<{ include: typeof SALE_INCLUDE }>;
@@ -23,7 +23,7 @@ function toDto(sale: SaleWithRelations) {
       id: item.id,
       productId: item.productId,
       productName: item.product.name,
-      sku: item.product.sku,
+      designNumber: item.product.designNumber,
       quantity: item.quantity,
       unitPrice: Number(item.unitPrice),
       lineTotal: Number(item.lineTotal),
@@ -109,7 +109,7 @@ export async function createSale(input: SaleInput) {
     const product = productById.get(line.productId);
     if (!product) throw ApiError.notFound(`Product ${line.productId} not found.`);
 
-    const unitPrice = Number(product.unitPrice);
+    const unitPrice = Number(product.sellingPrice);
     const lineTotal = Math.round(unitPrice * line.quantity * 100) / 100;
     subtotal += lineTotal;
 
@@ -161,7 +161,7 @@ export async function updateSale(id: string, input: SaleInput) {
     const product = productById.get(line.productId);
     if (!product) throw ApiError.notFound(`Product ${line.productId} not found.`);
 
-    const unitPrice = Number(product.unitPrice);
+    const unitPrice = Number(product.sellingPrice);
     const lineTotal = Math.round(unitPrice * line.quantity * 100) / 100;
     subtotal += lineTotal;
 

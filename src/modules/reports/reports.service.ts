@@ -59,7 +59,7 @@ export async function getSalesReport(from?: string, to?: string, status?: string
   ]);
 
   const topProductIds = topProducts.map((p) => p.productId);
-  const products = await prisma.product.findMany({ where: { id: { in: topProductIds } }, select: { id: true, name: true, sku: true } });
+  const products = await prisma.product.findMany({ where: { id: { in: topProductIds } }, select: { id: true, name: true, designNumber: true } });
   const productMap = new Map(products.map((p) => [p.id, p]));
 
   const totalRevenue = sales.reduce((sum, s) => sum + Number(s.total), 0);
@@ -72,7 +72,7 @@ export async function getSalesReport(from?: string, to?: string, status?: string
     statusBreakdown: statusBreakdown.map((s) => ({ status: s.status, count: s._count })),
     topProducts: topProducts.map((p) => ({
       product: productMap.get(p.productId)?.name ?? 'Unknown',
-      sku: productMap.get(p.productId)?.sku ?? '',
+      designNumber: productMap.get(p.productId)?.designNumber ?? '',
       quantity: p._sum.quantity ?? 0,
       revenue: Number(p._sum.lineTotal ?? 0),
     })),
@@ -117,7 +117,7 @@ export async function getPurchasesReport(from?: string, to?: string, status?: st
   ]);
 
   const topProductIds = topProducts.map((p) => p.productId);
-  const products = await prisma.product.findMany({ where: { id: { in: topProductIds } }, select: { id: true, name: true, sku: true } });
+  const products = await prisma.product.findMany({ where: { id: { in: topProductIds } }, select: { id: true, name: true, designNumber: true } });
   const productMap = new Map(products.map((p) => [p.id, p]));
 
   const totalCost = purchases.reduce((sum, p) => {
@@ -130,7 +130,7 @@ export async function getPurchasesReport(from?: string, to?: string, status?: st
     statusBreakdown: statusBreakdown.map((s) => ({ status: s.status, count: s._count })),
     topProducts: topProducts.map((p) => ({
       product: productMap.get(p.productId)?.name ?? 'Unknown',
-      sku: productMap.get(p.productId)?.sku ?? '',
+      designNumber: productMap.get(p.productId)?.designNumber ?? '',
       quantity: p._sum.quantity ?? 0,
       cost: Number(p._sum.lineTotal ?? 0),
     })),
@@ -165,17 +165,17 @@ export async function getInventoryReport() {
     prisma.stockMovement.findMany({
       take: 20,
       orderBy: { createdAt: 'desc' },
-      include: { product: { select: { name: true, sku: true } } },
+      include: { product: { select: { name: true, designNumber: true } } },
     }),
   ]);
 
-  const totalStockValue = products.reduce((sum, p) => sum + Number(p.unitPrice) * p.quantityInStock, 0);
+  const totalStockValue = products.reduce((sum, p) => sum + Number(p.sellingPrice) * p.quantityInStock, 0);
   const lowStockCount = products.filter((p) => p.quantityInStock <= p.reorderLevel).length;
 
   const categoryBreakdown = categories.map((cat) => {
     const productCount = cat.subcategories.reduce((sum, sub) => sum + sub._count.products, 0);
     const categoryProducts = products.filter((p) => p.subcategory?.category?.name === cat.name);
-    const stockValue = categoryProducts.reduce((sum, p) => sum + Number(p.unitPrice) * p.quantityInStock, 0);
+    const stockValue = categoryProducts.reduce((sum, p) => sum + Number(p.sellingPrice) * p.quantityInStock, 0);
     return {
       category: cat.name,
       productCount,
@@ -190,7 +190,7 @@ export async function getInventoryReport() {
     lowStockProducts: lowStockProducts.map((p) => ({
       id: p.id,
       name: p.name,
-      sku: p.sku,
+      designNumber: p.designNumber,
       quantityInStock: p.quantityInStock,
       reorderLevel: p.reorderLevel,
     })),
@@ -198,7 +198,7 @@ export async function getInventoryReport() {
     recentMovements: recentMovements.map((m) => ({
       id: m.id,
       productName: m.product.name,
-      sku: m.product.sku,
+      designNumber: m.product.designNumber,
       type: m.type,
       quantity: m.quantity,
       reason: m.reason,
