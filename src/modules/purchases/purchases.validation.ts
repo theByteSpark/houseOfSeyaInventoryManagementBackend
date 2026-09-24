@@ -8,6 +8,8 @@ export const purchaseLineSchema = z.object({
 
 export const purchaseInputSchema = z.object({
   vendorId: z.string().min(1),
+  vendorInvoiceNumber: z.string().optional(),
+  vendorInvoiceDate: z.string().optional(),
   items: z.array(purchaseLineSchema).min(1),
 });
 

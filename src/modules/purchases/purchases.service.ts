@@ -34,6 +34,8 @@ function toDto(purchase: PurchaseWithRelations) {
     items,
     subtotal,
     total: subtotal,
+    vendorInvoiceNumber: purchase.vendorInvoiceNumber,
+    vendorInvoiceDate: purchase.vendorInvoiceDate,
     orderedAt: purchase.orderedAt,
     receivedAt: purchase.receivedAt,
     createdAt: purchase.createdAt,
@@ -129,6 +131,8 @@ export async function createPurchase(input: PurchaseInput) {
       purchaseNumber,
       vendorId: vendor.id,
       status: 'DRAFT',
+      vendorInvoiceNumber: input.vendorInvoiceNumber || null,
+      vendorInvoiceDate: input.vendorInvoiceDate ? new Date(input.vendorInvoiceDate) : null,
       items: { create: itemsData },
     },
     include: PURCHASE_INCLUDE,
@@ -170,6 +174,8 @@ export async function updatePurchase(id: string, input: PurchaseInput) {
         where: { id },
         data: {
           vendorId: vendor.id,
+          vendorInvoiceNumber: input.vendorInvoiceNumber || null,
+          vendorInvoiceDate: input.vendorInvoiceDate ? new Date(input.vendorInvoiceDate) : null,
           items: { create: itemsData },
         },
       });

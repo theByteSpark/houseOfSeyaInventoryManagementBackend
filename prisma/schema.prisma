@@ -192,6 +192,8 @@ model Purchase {
   vendor            Vendor         @relation(fields: [vendorId], references: [id])
   status            PurchaseStatus @default(DRAFT)
   items             PurchaseItem[]
+  vendorInvoiceNumber String?
+  vendorInvoiceDate DateTime?
   orderedAt         DateTime?
   receivedAt        DateTime?
   createdAt         DateTime       @default(now())
