@@ -4,7 +4,7 @@
 >
 > **Related docs:** `data-conventions.md` (the *rules* behind these fields — id format, money type, migration naming) · `../domains/*.md` (the *business rules* layered on top of these tables) · source of truth is always `prisma/schema.prisma` — **if this file and that one disagree, `schema.prisma` wins; fix this file** (see `../GOLDEN_RULES.md` Rule 8).
 >
-> **Reflects:** migration `20260925090000_add_purchase_vendor_invoice_fields` (the latest as of this writing — check `prisma/migrations/` for anything newer before trusting this blindly).
+> **Reflects:** migration `20260925160000_add_enquiries` (the latest as of this writing — check `prisma/migrations/` for anything newer before trusting this blindly).
 
 ---
 
@@ -23,6 +23,9 @@ erDiagram
     SALE ||--o{ SALE_ITEM : "contains"
     VENDOR ||--o{ PURCHASE : "supplies"
     PURCHASE ||--o{ PURCHASE_ITEM : "contains"
+    CUSTOMER ||--o{ ENQUIRY : "asks about"
+    SUBCATEGORY ||--o{ ENQUIRY : "classifies"
+    ENQUIRY ||--o{ ENQUIRY_DIAMOND : "wants"
 ```
 
 `AttributeOption` (Metal/Diamond-Shape/Diamond-Quality picklists) is deliberately **not** an edge on this diagram — `Product`/`ProductDiamond` store its `label` as a plain string, not a foreign key, so there is no DB relationship to draw. See its own section below and Rule 9 in `data-conventions.md` for why.
@@ -60,9 +63,9 @@ Read this as: an arrow's "many" side (`o{`) is the table holding the foreign key
 | Table | Key fields | Notes |
 |---|---|---|
 | `Category` | `id`, `name` (unique) | Top level. Cannot be deleted while it has subcategories (`inventory.service.ts` `deleteCategory`). |
-| `Subcategory` | `id`, `name`, `categoryId` (FK) | `@@unique([categoryId, name])` — same subcategory name is fine under a different category. Cannot be deleted while it has products. |
+| `Subcategory` | `id`, `name`, `categoryId` (FK) | `@@unique([categoryId, name])` — same subcategory name is fine under a different category. Cannot be deleted while it has products **or enquiries**. |
 
-**Relationships:** `Category` has many `Subcategory`; `Subcategory` has many `Product`.
+**Relationships:** `Category` has many `Subcategory`; `Subcategory` has many `Product` and `Enquiry`.
 
 ### `Product` — the jewelry costing sheet + sellable/stockable item
 
@@ -136,7 +139,16 @@ Never updated or deleted — it's a log. `quantityInStock` on `Product` is a run
 | `email`, `phone`, `address` | string, nullable | |
 | `createdAt`, `updatedAt` | timestamps | |
 
-**Relationships:** has many `Sale`. The frontend-facing `totalSales` field is a computed `_count.sales`, not a stored column (see `customers.service.ts`).
+**Relationships:** has many `Sale` and `Enquiry`. The frontend-facing `totalSales` field is a computed `_count.sales`, not a stored column (see `customers.service.ts`). Unlike `Subcategory`, `deleteCustomer` does **not** guard against either relation — a pre-existing gap (a customer with sales already hits a raw, unhandled FK error on delete), not something the `Enquiry` addition introduced; not fixed here, out of scope.
+
+### `Enquiry` / `EnquiryDiamond` — recorded customer interest, no pricing
+
+| Table | Key fields | Notes |
+|---|---|---|
+| `Enquiry` | `id`, `customerId` (FK), `subcategoryId` (nullable FK), `metalType` (string, from the `METAL` `AttributeOption`s), `grossWeight` (`Decimal(10,3)`) | Deliberately has **no cost/price fields at all** — this is "what the customer asked about," not a costed item. Becomes a real `Product` later only if someone builds that cost sheet by hand; there's no automatic conversion. |
+| `EnquiryDiamond` | `id`, `enquiryId` (FK), `shape`, `quality` (both from the matching `AttributeOption` types), `pieces`, `caratWeight` (`Decimal(10,3)`) | Notably **lighter than `ProductDiamond`** — no `weight` reference field, no `rate`, no computed `amount`, since nothing here is being priced. Replaced wholesale on update, same `deleteMany` + nested `create` pattern as `ProductDiamond`. |
+
+**Relationships:** `Customer` has many `Enquiry`; `Subcategory` has many `Enquiry` (nullable — an enquiry can be vague about subcategory); `Enquiry` has many `EnquiryDiamond`.
 
 ### `Sale` / `SaleItem` — invoicing
 
@@ -185,5 +197,6 @@ Never updated or deleted — it's a log. `quantityInStock` on `Product` is a run
 | `20260730185017_add_vendor_purchase_models` | Added `Vendor`, `Purchase`, `PurchaseItem`, `PurchaseStatus` — the procurement side of the system |
 | `20260924120000_add_jewelry_costing_fields` | Renamed `Product.sku`→`designNumber`, `unitPrice`→`sellingPrice`; dropped `Product.description`; added the metal/labour costing fields, `ProductDiamond`, and `AttributeOption`/`AttributeType` — repositioned the catalog from generic inventory items to a jewelry cost sheet |
 | `20260925090000_add_purchase_vendor_invoice_fields` | Added `Purchase.vendorInvoiceNumber`/`vendorInvoiceDate`, both nullable |
+| `20260925160000_add_enquiries` | Added `Enquiry`/`EnquiryDiamond` — a pricing-free record of customer interest |
 
 When adding a table or relationship, add a row here in the same change (see `../GOLDEN_RULES.md` Rule 8) — this table is what makes "why does this table look this way" answerable in ten seconds instead of a `git log` archaeology session.

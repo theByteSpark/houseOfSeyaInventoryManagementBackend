@@ -478,6 +478,10 @@ export async function deleteSubcategory(id: string) {
   if (subcategory._count.products > 0) {
     throw ApiError.badRequest('Cannot delete a subcategory that still has products assigned to it.');
   }
+  const enquiryCount = await prisma.enquiry.count({ where: { subcategoryId: id } });
+  if (enquiryCount > 0) {
+    throw ApiError.badRequest('Cannot delete a subcategory that still has enquiries assigned to it.');
+  }
 
   await prisma.subcategory.delete({ where: { id } });
 }

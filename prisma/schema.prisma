@@ -43,6 +43,7 @@ model Customer {
   phone     String?
   address   String?
   sales     Sale[]
+  enquiries Enquiry[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -59,6 +60,7 @@ model Subcategory {
   categoryId String
   category   Category  @relation(fields: [categoryId], references: [id])
   products   Product[]
+  enquiries  Enquiry[]
 
   @@unique([categoryId, name])
 }
@@ -210,4 +212,30 @@ model PurchaseItem {
   receivedQuantity Int      @default(0)
   unitCost         Decimal  @db.Decimal(10, 2)
   lineTotal        Decimal  @db.Decimal(10, 2)
+}
+
+model Enquiry {
+  id            String           @id @default(uuid())
+  customerId    String
+  customer      Customer         @relation(fields: [customerId], references: [id])
+  subcategoryId String?
+  subcategory   Subcategory?     @relation(fields: [subcategoryId], references: [id])
+  metalType     String
+  grossWeight   Decimal          @db.Decimal(10, 3)
+  diamonds      EnquiryDiamond[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+}
+
+model EnquiryDiamond {
+  id          String   @id @default(uuid())
+  enquiryId   String
+  enquiry     Enquiry  @relation(fields: [enquiryId], references: [id])
+  shape       String
+  quality     String
+  pieces      Int
+  caratWeight Decimal  @db.Decimal(10, 3)
+  createdAt   DateTime @default(now())
+
+  @@index([enquiryId])
 }

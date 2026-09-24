@@ -2,7 +2,7 @@
 
 > **Purpose:** Business rules for categories, subcategories, products, and stock movements — what's allowed, what's blocked, and why.
 >
-> **Related docs:** `../database/schema-overview.md` (the tables) · `../architecture/module-conventions.md` (the code shape) · module: `src/modules/inventory/`
+> **Related docs:** `../database/schema-overview.md` (the tables) · `../architecture/module-conventions.md` (the code shape) · `enquiries.md` (the pricing-free sibling of this domain) · module: `src/modules/inventory/`
 
 ---
 
@@ -41,7 +41,7 @@ The frontend (`ProductFormPage.tsx`) recomputes the exact same formulas live for
 | Subcategory names are unique *within* a category, not globally | `@@unique([categoryId, name])`, checked in `createSubcategory`/`updateSubcategory` | Two categories can each have a "Cotton" subcategory |
 | Product Design Number is globally unique | `createProduct`/`updateProduct` | Rename the design number |
 | A category can't be deleted while it has subcategories | `deleteCategory` checks `_count.subcategories > 0` → 400 | Delete or reassign every subcategory first |
-| A subcategory can't be deleted while it has products | `deleteSubcategory` checks `_count.products > 0` → 400 | Delete or reassign every product first |
+| A subcategory can't be deleted while it has products or enquiries | `deleteSubcategory` checks `_count.products > 0`, then `prisma.enquiry.count({ where: { subcategoryId } })` → 400 either way | Delete/reassign every product and enquiry first |
 | `quantityInStock` never changes without a paired `StockMovement` row | Convention, not a DB constraint — every write path (`createProduct` initial stock, `restockProduct`, `deductStockInTransaction`, purchase receiving) writes both in the same operation/transaction | N/A — this is a code discipline, watch for it in review |
 
 ## Stock Movements
