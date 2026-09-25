@@ -42,7 +42,7 @@ function toDto(purchase: PurchaseWithRelations) {
   };
 }
 
-async function nextPurchaseNumber(): Promise<string> {
+export async function nextPurchaseNumber(): Promise<string> {
   const year = new Date().getFullYear();
   const count = await prisma.purchase.count();
   return `PO-${year}-${String(count + 1).padStart(4, '0')}`;

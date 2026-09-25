@@ -5,7 +5,7 @@ import type { PaginatedResult, PaginationParams } from '@/utils/pagination';
 import { deductStockInTransaction } from '@/modules/inventory/inventory.service';
 import type { SaleInput } from './sales.validation';
 
-const TAX_RATE = 0.03;
+export const TAX_RATE = 0.03;
 
 const SALE_INCLUDE = {
   customer: { select: { name: true, email: true, phone: true, address: true } },
@@ -38,7 +38,7 @@ function toDto(sale: SaleWithRelations) {
   };
 }
 
-async function nextSaleNumber(): Promise<string> {
+export async function nextSaleNumber(): Promise<string> {
   const year = new Date().getFullYear();
   const count = await prisma.sale.count();
   return `SALE-${year}-${String(count + 1).padStart(4, '0')}`;

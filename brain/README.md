@@ -21,6 +21,7 @@ An Express + TypeScript + Prisma (PostgreSQL) REST API for House of Seya's inven
 | Understand ID/money/timestamp conventions in the schema | `database/data-conventions.md` |
 | Understand product/category/stock-movement rules, the jewelry costing formulas, and the attribute-options picklists | `domains/inventory-and-stock.md` |
 | Understand what an Enquiry is and why it has no pricing | `domains/enquiries.md` |
+| Understand CSV/Excel bulk import for Product/Customer/Vendor/Sale/Purchase | `domains/import-export.md` |
 | Understand the Sale lifecycle and invoicing | `domains/sales-and-invoicing.md` |
 | Understand the Purchase lifecycle and receiving stock | `domains/purchases-and-vendors.md` |
 | **Build a brand-new CRUD module end to end** | `playbooks/add-a-new-module.md` |
@@ -41,11 +42,12 @@ An Express + TypeScript + Prisma (PostgreSQL) REST API for House of Seya's inven
 | `domains/sales-and-invoicing.md` | `Sale` state machine, numbering, stock deduction on issue, PDF invoice |
 | `domains/purchases-and-vendors.md` | `Purchase` state machine, partial receiving, vendor stats, vendor invoice fields, and how purchases create new products |
 | `domains/enquiries.md` | `Enquiry`/`EnquiryDiamond` — recorded customer interest, deliberately with no pricing |
+| `domains/import-export.md` | CSV/Excel bulk import column contracts, matching rules, and the one-row-one-record limitation for Product/Customer/Vendor/Sale/Purchase |
 | `playbooks/add-a-new-module.md` | The exact steps to add a new resource: schema → migration → service → routes → wire into `app.ts` → frontend hookup pointer |
 
 ## Where We Stand
 
-**Current situation:** The API covers auth, users, customers, inventory (categories/subcategories/products-as-jewelry-cost-sheets/stock movements), sales, vendors, purchases, reports, attribute options (the Metal/Diamond-Shape/Diamond-Quality picklists), and enquiries (pricing-free customer interest records). One Postgres database via Prisma, one Express app, JWT access + refresh-token auth with two roles (`ADMIN`, `STAFF`). This Brain was written by walking the actual code in `src/` and `prisma/schema.prisma` as of the migration `20260925180000_flatten_product_diamond` — see `database/schema-overview.md` for the exact model list this reflects.
+**Current situation:** The API covers auth, users, customers, inventory (categories/subcategories/products-as-jewelry-cost-sheets/stock movements), sales, vendors, purchases, reports, attribute options (the Metal/Diamond-Shape/Diamond-Quality picklists), enquiries (pricing-free customer interest records), and CSV/Excel bulk import for Product/Customer/Vendor/Sale/Purchase. One Postgres database via Prisma, one Express app, JWT access + refresh-token auth with two roles (`ADMIN`, `STAFF`). This Brain was written by walking the actual code in `src/` and `prisma/schema.prisma` as of the migration `20260925180000_flatten_product_diamond` — see `database/schema-overview.md` for the exact model list this reflects.
 
 **Near-term ask:** Use this Brain when reviewing or extending the system — especially `playbooks/add-a-new-module.md` for new resources and `database/schema-overview.md` before any schema change, so new work matches existing conventions instead of introducing a second pattern.
 
