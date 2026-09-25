@@ -20,7 +20,7 @@ Since migration `20260924120000`, `Product` isn't just a catalog row — it's a 
 | Diamond Cost | `diamondCaratWeight × diamondRate` (0 if either is unset — `diamondWeight` is a client-requested reference field and never enters this formula) |
 | Labour Cost | `makingChargePerGram × grossWeight` (the same `grossWeight` as Metal Cost) |
 | Total Cost | Metal Cost + Diamond Cost + Labour Cost + `fixedExpense` |
-| Tax | `Total Cost × 0.03` (the `TAX_RATE` constant in `inventory.service.ts`, a flat 3% — same "hardcode a rate, easy to find, easy to change" precedent as `sales.service.ts`'s 10% default) |
+| Tax | `Total Cost × 0.03` (the `TAX_RATE` constant in `inventory.service.ts`, a flat 3% — the same fixed rate `sales.service.ts` charges on a sale's subtotal, see `sales-and-invoicing.md`) |
 | Final Amount | Total Cost + Tax |
 | Selling Price | **not derived** — a required manual input (`Product.sellingPrice`), shown next to Final Amount as a reference figure only |
 

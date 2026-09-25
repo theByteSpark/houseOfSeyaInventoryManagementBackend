@@ -36,7 +36,7 @@ Enforced in `transitionSale()` (`sales.service.ts`):
 1. Validates the customer exists.
 2. Loads all referenced products in one query (`findMany({ where: { id: { in: productIds } } })`), builds a `Map` for O(1) lookup per line — not one query per line item.
 3. Computes each line's `lineTotal = unitPrice * quantity`, rounded to cents; sums to `subtotal`.
-4. Applies `taxRate` (input-provided, default `0.1` = 10%) to get `tax`, then `total = subtotal + tax`.
+4. Applies a flat 3% (`TAX_RATE` constant in `sales.service.ts`, not client-overridable — the earlier version accepted an optional per-sale `taxRate` input defaulting to 10%; that override was removed once the business settled on a fixed rate) to get `tax`, then `total = subtotal + tax`.
 5. Generates `saleNumber` via `nextSaleNumber()` (see `../database/data-conventions.md` Rule 4 for its format and known race-window limitation).
 6. Creates the `Sale` with status `DRAFT` and nested `items: { create: itemsData }` in one Prisma call.
 

@@ -5,6 +5,8 @@ import type { PaginatedResult, PaginationParams } from '@/utils/pagination';
 import { deductStockInTransaction } from '@/modules/inventory/inventory.service';
 import type { SaleInput } from './sales.validation';
 
+const TAX_RATE = 0.03;
+
 const SALE_INCLUDE = {
   customer: { select: { name: true, email: true, phone: true, address: true } },
   items: { include: { product: { select: { name: true, designNumber: true } } } },
@@ -122,8 +124,7 @@ export async function createSale(input: SaleInput) {
   });
 
   subtotal = Math.round(subtotal * 100) / 100;
-  const taxRate = input.taxRate ?? 0.1;
-  const tax = Math.round(subtotal * taxRate * 100) / 100;
+  const tax = Math.round(subtotal * TAX_RATE * 100) / 100;
   const total = Math.round((subtotal + tax) * 100) / 100;
 
   const saleNumber = await nextSaleNumber();
@@ -174,8 +175,7 @@ export async function updateSale(id: string, input: SaleInput) {
   });
 
   subtotal = Math.round(subtotal * 100) / 100;
-  const taxRate = input.taxRate ?? 0.1;
-  const tax = Math.round(subtotal * taxRate * 100) / 100;
+  const tax = Math.round(subtotal * TAX_RATE * 100) / 100;
   const total = Math.round((subtotal + tax) * 100) / 100;
 
   await prisma.$transaction(
