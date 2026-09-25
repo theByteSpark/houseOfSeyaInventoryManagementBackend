@@ -69,7 +69,7 @@ async function main() {
       quantityInStock: 6,
       reorderLevel: 2,
       subcategoryKey: 'Rings/Engagement',
-      diamonds: [{ shape: 'Round', quality: 'Q1', pieces: 1, caratWeight: 0.5, weight: 0.1, rate: 45000 }],
+      diamond: { shape: 'Round', quality: 'Q1', pieces: 1, caratWeight: 0.5, weight: 0.1, rate: 45000 },
     },
     {
       designNumber: 'RNG-CKT-002',
@@ -83,10 +83,7 @@ async function main() {
       quantityInStock: 4,
       reorderLevel: 2,
       subcategoryKey: 'Rings/Cocktail',
-      diamonds: [
-        { shape: 'Round', quality: 'Q1', pieces: 1, caratWeight: 0.75, weight: 0.15, rate: 46000 },
-        { shape: 'Square', quality: 'Q2', pieces: 8, caratWeight: 0.4, weight: 0.08, rate: 18000 },
-      ],
+      diamond: { shape: 'Round', quality: 'Q1', pieces: 1, caratWeight: 0.75, weight: 0.15, rate: 46000 },
     },
     {
       designNumber: 'NCK-CHN-010',
@@ -100,7 +97,7 @@ async function main() {
       quantityInStock: 10,
       reorderLevel: 3,
       subcategoryKey: 'Necklaces/Chains',
-      diamonds: [],
+      diamond: null,
     },
     {
       designNumber: 'NCK-PND-011',
@@ -114,7 +111,7 @@ async function main() {
       quantityInStock: 15,
       reorderLevel: 5,
       subcategoryKey: 'Necklaces/Pendants',
-      diamonds: [{ shape: 'Round', quality: 'Q2', pieces: 1, caratWeight: 0.3, weight: 0.06, rate: 32000 }],
+      diamond: { shape: 'Round', quality: 'Q2', pieces: 1, caratWeight: 0.3, weight: 0.06, rate: 32000 },
     },
     {
       designNumber: 'EAR-STD-020',
@@ -128,7 +125,7 @@ async function main() {
       quantityInStock: 40,
       reorderLevel: 10,
       subcategoryKey: 'Earrings/Studs',
-      diamonds: [],
+      diamond: null,
     },
     {
       designNumber: 'EAR-HOP-021',
@@ -142,7 +139,7 @@ async function main() {
       quantityInStock: 5,
       reorderLevel: 2,
       subcategoryKey: 'Earrings/Hoops',
-      diamonds: [{ shape: 'Square', quality: 'Q1', pieces: 16, caratWeight: 0.9, weight: 0.18, rate: 20000 }],
+      diamond: { shape: 'Square', quality: 'Q1', pieces: 16, caratWeight: 0.9, weight: 0.18, rate: 20000 },
     },
     {
       designNumber: 'BRC-BNG-030',
@@ -156,7 +153,7 @@ async function main() {
       quantityInStock: 5,
       reorderLevel: 10,
       subcategoryKey: 'Bracelets/Bangles',
-      diamonds: [],
+      diamond: null,
     },
     {
       designNumber: 'BRC-BNG-031',
@@ -170,7 +167,7 @@ async function main() {
       quantityInStock: 3,
       reorderLevel: 1,
       subcategoryKey: 'Bracelets/Bangles',
-      diamonds: [{ shape: 'Round', quality: 'Q1', pieces: 24, caratWeight: 1.2, weight: 0.24, rate: 44000 }],
+      diamond: { shape: 'Round', quality: 'Q1', pieces: 24, caratWeight: 1.2, weight: 0.24, rate: 44000 },
     },
   ];
 
@@ -184,13 +181,18 @@ async function main() {
         metalType: p.metalType,
         grossWeight: p.grossWeight,
         metalRatePerGram: p.metalRatePerGram,
+        diamondShape: p.diamond?.shape,
+        diamondQuality: p.diamond?.quality,
+        diamondPieces: p.diamond?.pieces,
+        diamondCaratWeight: p.diamond?.caratWeight,
+        diamondWeight: p.diamond?.weight,
+        diamondRate: p.diamond?.rate,
         makingChargePerGram: p.makingChargePerGram,
         fixedExpense: p.fixedExpense,
         sellingPrice: p.sellingPrice,
         quantityInStock: p.quantityInStock,
         reorderLevel: p.reorderLevel,
         subcategoryId: subcategoryIds.get(p.subcategoryKey),
-        diamonds: { create: p.diamonds },
       },
     });
 

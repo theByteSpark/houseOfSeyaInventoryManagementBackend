@@ -12,26 +12,23 @@
 
 ## Jewelry Costing (Product as a Cost Sheet)
 
-Since migration `20260924120000`, `Product` isn't just a catalog row — it's a costing sheet. Every formula below runs in `inventory.service.ts`'s `toProductDto()`, computed fresh on every read from the raw inputs stored on `Product`/`ProductDiamond` — none of the results are stored columns (see `../database/data-conventions.md` and `../GOLDEN_RULES.md` on derived-not-stored fields).
+Since migration `20260924120000`, `Product` isn't just a catalog row — it's a costing sheet. Every formula below runs in `inventory.service.ts`'s `toProductDto()`, computed fresh on every read from the raw inputs stored on `Product` — none of the results are stored columns (see `../database/data-conventions.md` and `../GOLDEN_RULES.md` on derived-not-stored fields). A product has **exactly one diamond block** (`diamondShape`/`diamondQuality`/`diamondPieces`/`diamondCaratWeight`/`diamondWeight`/`diamondRate`, all nullable, all plain columns on `Product` since migration `20260925180000`) — not a repeatable list.
 
 | Term | Formula |
 |---|---|
 | Metal Cost | `grossWeight × metalRatePerGram` |
-| Diamond line Amount | `caratWeight × rate` (per `ProductDiamond` row — `weight` is a client-requested reference field and never enters this formula) |
-| Total Diamond Cost | sum of every `ProductDiamond` row's Amount (zero if the product has no diamonds) |
+| Diamond Cost | `diamondCaratWeight × diamondRate` (0 if either is unset — `diamondWeight` is a client-requested reference field and never enters this formula) |
 | Labour Cost | `makingChargePerGram × grossWeight` (the same `grossWeight` as Metal Cost) |
-| Total Cost | Metal Cost + Total Diamond Cost + Labour Cost + `fixedExpense` |
+| Total Cost | Metal Cost + Diamond Cost + Labour Cost + `fixedExpense` |
 | Tax | `Total Cost × 0.03` (the `TAX_RATE` constant in `inventory.service.ts`, a flat 3% — same "hardcode a rate, easy to find, easy to change" precedent as `sales.service.ts`'s 10% default) |
 | Final Amount | Total Cost + Tax |
 | Selling Price | **not derived** — a required manual input (`Product.sellingPrice`), shown next to Final Amount as a reference figure only |
 
 The frontend (`ProductFormPage.tsx`) recomputes the exact same formulas live for instant feedback as the user types; this service's computation is the authority once saved — a client-sent computed number is never trusted.
 
-`ProductDiamond` rows are replaced wholesale on every product update — `deleteMany` then nested `create`, the same pattern `sales.service.ts`'s `updateSale` uses for `SaleItem` (see `../architecture/module-conventions.md`).
-
 ## Attribute Options (Metal / Diamond Shape / Diamond Quality Picklists)
 
-`src/modules/attributeOptions/` is a small standalone module backing the dropdowns for `Product.metalType` and `ProductDiamond.shape`/`quality`. `GET /api/v1/attribute-options?type=METAL|DIAMOND_SHAPE|DIAMOND_QUALITY` is open to any authenticated user (staff need it to fill out the product form); create/update/delete are `authorize('ADMIN')`-gated, managed from the frontend's `/settings/attributes` page. See `../database/data-conventions.md` Rule 10 for why this has no foreign key into `Product`/`ProductDiamond` — deleting an option is always safe, it only affects the picker for new entries.
+`src/modules/attributeOptions/` is a small standalone module backing the dropdowns for `Product.metalType` and `Product.diamondShape`/`diamondQuality`. `GET /api/v1/attribute-options?type=METAL|DIAMOND_SHAPE|DIAMOND_QUALITY` is open to any authenticated user (staff need it to fill out the product form); create/update/delete are `authorize('ADMIN')`-gated, managed from the frontend's `/settings/attributes` page. See `../database/data-conventions.md` Rule 10 for why this has no foreign key into `Product` — deleting an option is always safe, it only affects the picker for new entries.
 
 ## Rules
 

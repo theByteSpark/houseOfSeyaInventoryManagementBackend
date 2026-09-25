@@ -1,21 +1,17 @@
 import { z } from 'zod';
 
-export const diamondInputSchema = z.object({
-  shape: z.string().min(1),
-  quality: z.string().min(1),
-  pieces: z.coerce.number().int().positive(),
-  caratWeight: z.coerce.number().positive(),
-  weight: z.coerce.number().positive(),
-  rate: z.coerce.number().positive(),
-});
-
 export const productInputSchema = z.object({
   designNumber: z.string().min(1),
   name: z.string().min(1),
   metalType: z.string().min(1),
   grossWeight: z.coerce.number().positive(),
   metalRatePerGram: z.coerce.number().positive(),
-  diamonds: z.array(diamondInputSchema).default([]),
+  diamondShape: z.string().optional(),
+  diamondQuality: z.string().optional(),
+  diamondPieces: z.coerce.number().int().positive().optional(),
+  diamondCaratWeight: z.coerce.number().positive().optional(),
+  diamondWeight: z.coerce.number().positive().optional(),
+  diamondRate: z.coerce.number().positive().optional(),
   makingChargePerGram: z.coerce.number().min(0),
   fixedExpense: z.coerce.number().min(0).default(0),
   sellingPrice: z.coerce.number().positive(),
@@ -38,7 +34,6 @@ export const subcategoryInputSchema = z.object({
   categoryId: z.string().min(1),
 });
 
-export type DiamondInput = z.infer<typeof diamondInputSchema>;
 export type ProductInput = z.infer<typeof productInputSchema>;
 export type RestockInput = z.infer<typeof restockInputSchema>;
 export type CategoryInput = z.infer<typeof categoryInputSchema>;

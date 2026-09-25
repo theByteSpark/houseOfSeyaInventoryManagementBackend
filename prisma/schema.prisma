@@ -66,40 +66,30 @@ model Subcategory {
 }
 
 model Product {
-  id                   String          @id @default(uuid())
-  designNumber         String          @unique
-  name                 String
-  metalType            String?
-  grossWeight          Decimal?        @db.Decimal(10, 3)
-  metalRatePerGram     Decimal?        @db.Decimal(10, 2)
-  makingChargePerGram  Decimal?        @db.Decimal(10, 2)
-  fixedExpense         Decimal         @db.Decimal(10, 2) @default(0)
-  sellingPrice         Decimal         @db.Decimal(10, 2)
-  quantityInStock      Int             @default(0)
-  reorderLevel         Int             @default(0)
-  subcategoryId        String?
-  subcategory          Subcategory?    @relation(fields: [subcategoryId], references: [id])
-  diamonds             ProductDiamond[]
-  saleItems            SaleItem[]
-  purchaseItems        PurchaseItem[]
-  stockMovements       StockMovement[]
-  createdAt            DateTime        @default(now())
-  updatedAt            DateTime        @updatedAt
-}
-
-model ProductDiamond {
-  id          String   @id @default(uuid())
-  productId   String
-  product     Product  @relation(fields: [productId], references: [id])
-  shape       String
-  quality     String
-  pieces      Int
-  caratWeight Decimal  @db.Decimal(10, 3)
-  weight      Decimal  @db.Decimal(10, 3)
-  rate        Decimal  @db.Decimal(10, 2)
-  createdAt   DateTime @default(now())
-
-  @@index([productId])
+  id                  String          @id @default(uuid())
+  designNumber        String          @unique
+  name                String
+  metalType           String?
+  grossWeight         Decimal?        @db.Decimal(10, 3)
+  metalRatePerGram    Decimal?        @db.Decimal(10, 2)
+  diamondShape        String?
+  diamondQuality      String?
+  diamondPieces       Int?
+  diamondCaratWeight  Decimal?        @db.Decimal(10, 3)
+  diamondWeight       Decimal?        @db.Decimal(10, 3)
+  diamondRate         Decimal?        @db.Decimal(10, 2)
+  makingChargePerGram Decimal?        @db.Decimal(10, 2)
+  fixedExpense        Decimal         @db.Decimal(10, 2) @default(0)
+  sellingPrice        Decimal         @db.Decimal(10, 2)
+  quantityInStock     Int             @default(0)
+  reorderLevel        Int             @default(0)
+  subcategoryId       String?
+  subcategory         Subcategory?    @relation(fields: [subcategoryId], references: [id])
+  saleItems           SaleItem[]
+  purchaseItems       PurchaseItem[]
+  stockMovements      StockMovement[]
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
 }
 
 enum AttributeType {

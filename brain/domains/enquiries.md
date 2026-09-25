@@ -2,7 +2,7 @@
 
 > **Purpose:** What an Enquiry is, why it deliberately has no pricing, and the rules around it — module: `src/modules/enquiries/`.
 >
-> **Related docs:** `../database/schema-overview.md` (`Enquiry`/`EnquiryDiamond` tables) · `inventory-and-stock.md` (the costed sibling domain — `Product`/`ProductDiamond`) · `../architecture/module-conventions.md` (the code shape)
+> **Related docs:** `../database/schema-overview.md` (`Enquiry`/`EnquiryDiamond` tables) · `inventory-and-stock.md` (the costed sibling domain — `Product`) · `../architecture/module-conventions.md` (the code shape)
 
 ---
 
@@ -18,8 +18,8 @@ A record of what a customer is asking about — before any `Product` exists for 
 | Subcategory | Yes, optional | What kind of piece — optional because a customer can be vague |
 | Metal type | Yes, required | From the same `AttributeOption` (`type: METAL`) picklist the product form uses |
 | Gross weight | Yes, required | Roughly how heavy |
-| Diamond shape/quality/pieces/carat weight | Yes, repeatable (0+) | What kind of stones, if any |
-| Diamond `weight` (reference) / `rate` / computed `amount` | **No** | These exist on `ProductDiamond` because that model is being costed. Nothing here is priced, so there's nothing to compute. |
+| Diamond shape/quality/pieces/carat weight | Yes, **repeatable (0+)** | What kind of stones, if any — genuinely a list here (a customer can ask about several stone types at once), unlike `Product`, which flattened its diamond fields onto one row since a design has exactly one diamond block (see `../database/data-conventions.md` Rule 11) |
+| Diamond `weight` (reference) / `rate` / computed cost | **No** | These exist on `Product`'s diamond fields because that model is being costed. Nothing here is priced, so there's nothing to compute. |
 | Metal rate / making charge / fixed expense / selling price | **No** | Same reason — an Enquiry is pre-costing. |
 | Status / lifecycle | **No, not yet** | Only plain CRUD today (list/create/edit/delete). A status (open/converted/closed) or an explicit link to the `Product` it turned into is a reasonable future addition but wasn't asked for — see `../GOLDEN_RULES.md` Rule 10 before adding one speculatively. |
 
@@ -30,7 +30,7 @@ A record of what a customer is asking about — before any `Product` exists for 
 | Customer must exist | `createEnquiry`/`updateEnquiry` — `ApiError.notFound` if not |
 | Subcategory, if given, must exist | Same functions — checked only when `subcategoryId` is non-empty |
 | No `authorize()` gate | Recording an enquiry is normal staff work, same permission level as creating a `Customer` or a `Sale` — every route only requires `authenticate` |
-| Diamonds replaced wholesale on update | `updateEnquiry`: `deleteMany` + nested `create` in one `$transaction`, identical pattern to `ProductDiamond`/`SaleItem` |
+| Diamonds replaced wholesale on update | `updateEnquiry`: `deleteMany` + nested `create` in one `$transaction`, identical pattern to `SaleItem` |
 
 ## Extending This Domain
 

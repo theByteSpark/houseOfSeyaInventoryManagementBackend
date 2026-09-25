@@ -45,7 +45,7 @@ An Express + TypeScript + Prisma (PostgreSQL) REST API for House of Seya's inven
 
 ## Where We Stand
 
-**Current situation:** The API covers auth, users, customers, inventory (categories/subcategories/products-as-jewelry-cost-sheets/stock movements), sales, vendors, purchases, reports, attribute options (the Metal/Diamond-Shape/Diamond-Quality picklists), and enquiries (pricing-free customer interest records). One Postgres database via Prisma, one Express app, JWT access + refresh-token auth with two roles (`ADMIN`, `STAFF`). This Brain was written by walking the actual code in `src/` and `prisma/schema.prisma` as of the migration `20260925160000_add_enquiries` — see `database/schema-overview.md` for the exact model list this reflects.
+**Current situation:** The API covers auth, users, customers, inventory (categories/subcategories/products-as-jewelry-cost-sheets/stock movements), sales, vendors, purchases, reports, attribute options (the Metal/Diamond-Shape/Diamond-Quality picklists), and enquiries (pricing-free customer interest records). One Postgres database via Prisma, one Express app, JWT access + refresh-token auth with two roles (`ADMIN`, `STAFF`). This Brain was written by walking the actual code in `src/` and `prisma/schema.prisma` as of the migration `20260925180000_flatten_product_diamond` — see `database/schema-overview.md` for the exact model list this reflects.
 
 **Near-term ask:** Use this Brain when reviewing or extending the system — especially `playbooks/add-a-new-module.md` for new resources and `database/schema-overview.md` before any schema change, so new work matches existing conventions instead of introducing a second pattern.
 

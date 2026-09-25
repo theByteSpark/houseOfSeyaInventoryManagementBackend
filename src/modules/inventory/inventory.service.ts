@@ -2,32 +2,9 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/config/db';
 import { ApiError } from '@/utils/apiError';
 import type { PaginatedResult, PaginationParams } from '@/utils/pagination';
-import type { CategoryInput, DiamondInput, ProductInput, RestockInput, SubcategoryInput } from './inventory.validation';
+import type { CategoryInput, ProductInput, RestockInput, SubcategoryInput } from './inventory.validation';
 
 const TAX_RATE = 0.03;
-
-function toDiamondDto(diamond: {
-  id: string;
-  shape: string;
-  quality: string;
-  pieces: number;
-  caratWeight: Prisma.Decimal;
-  weight: Prisma.Decimal;
-  rate: Prisma.Decimal;
-}) {
-  const caratWeight = Number(diamond.caratWeight);
-  const rate = Number(diamond.rate);
-  return {
-    id: diamond.id,
-    shape: diamond.shape,
-    quality: diamond.quality,
-    pieces: diamond.pieces,
-    caratWeight,
-    weight: Number(diamond.weight),
-    rate,
-    amount: Math.round(caratWeight * rate * 100) / 100,
-  };
-}
 
 function toProductDto(product: {
   id: string;
@@ -36,6 +13,12 @@ function toProductDto(product: {
   metalType: string | null;
   grossWeight: Prisma.Decimal | null;
   metalRatePerGram: Prisma.Decimal | null;
+  diamondShape: string | null;
+  diamondQuality: string | null;
+  diamondPieces: number | null;
+  diamondCaratWeight: Prisma.Decimal | null;
+  diamondWeight: Prisma.Decimal | null;
+  diamondRate: Prisma.Decimal | null;
   makingChargePerGram: Prisma.Decimal | null;
   fixedExpense: Prisma.Decimal;
   sellingPrice: Prisma.Decimal;
@@ -43,12 +26,14 @@ function toProductDto(product: {
   reorderLevel: number;
   subcategoryId: string | null;
   subcategory: { name: string; category: { id: string; name: string } } | null;
-  diamonds: Parameters<typeof toDiamondDto>[0][];
   createdAt: Date;
 }) {
   const grossWeight = product.grossWeight !== null ? Number(product.grossWeight) : null;
   const metalRatePerGram = product.metalRatePerGram !== null ? Number(product.metalRatePerGram) : null;
   const makingChargePerGram = product.makingChargePerGram !== null ? Number(product.makingChargePerGram) : null;
+  const diamondCaratWeight = product.diamondCaratWeight !== null ? Number(product.diamondCaratWeight) : null;
+  const diamondWeight = product.diamondWeight !== null ? Number(product.diamondWeight) : null;
+  const diamondRate = product.diamondRate !== null ? Number(product.diamondRate) : null;
   const fixedExpense = Number(product.fixedExpense);
 
   const metalCost = grossWeight !== null && metalRatePerGram !== null
@@ -57,11 +42,11 @@ function toProductDto(product: {
   const labourCost = grossWeight !== null && makingChargePerGram !== null
     ? Math.round(grossWeight * makingChargePerGram * 100) / 100
     : 0;
+  const diamondCost = diamondCaratWeight !== null && diamondRate !== null
+    ? Math.round(diamondCaratWeight * diamondRate * 100) / 100
+    : 0;
 
-  const diamonds = product.diamonds.map(toDiamondDto);
-  const totalDiamondCost = Math.round(diamonds.reduce((sum, d) => sum + d.amount, 0) * 100) / 100;
-
-  const totalCost = Math.round((metalCost + totalDiamondCost + labourCost + fixedExpense) * 100) / 100;
+  const totalCost = Math.round((metalCost + diamondCost + labourCost + fixedExpense) * 100) / 100;
   const taxAmount = Math.round(totalCost * TAX_RATE * 100) / 100;
   const finalAmount = Math.round((totalCost + taxAmount) * 100) / 100;
 
@@ -73,8 +58,13 @@ function toProductDto(product: {
     grossWeight,
     metalRatePerGram,
     metalCost,
-    diamonds,
-    totalDiamondCost,
+    diamondShape: product.diamondShape,
+    diamondQuality: product.diamondQuality,
+    diamondPieces: product.diamondPieces,
+    diamondCaratWeight,
+    diamondWeight,
+    diamondRate,
+    diamondCost,
     makingChargePerGram,
     labourCost,
     fixedExpense,
@@ -94,19 +84,7 @@ function toProductDto(product: {
 
 const PRODUCT_INCLUDE = {
   subcategory: { include: { category: { select: { id: true, name: true } } } },
-  diamonds: true,
 } satisfies Prisma.ProductInclude;
-
-function toDiamondCreateData(diamonds: DiamondInput[]) {
-  return diamonds.map((d) => ({
-    shape: d.shape,
-    quality: d.quality,
-    pieces: d.pieces,
-    caratWeight: d.caratWeight,
-    weight: d.weight,
-    rate: d.rate,
-  }));
-}
 
 export async function listProducts() {
   const products = await prisma.product.findMany({
@@ -184,13 +162,18 @@ export async function createProduct(input: ProductInput) {
       metalType: input.metalType,
       grossWeight: input.grossWeight,
       metalRatePerGram: input.metalRatePerGram,
+      diamondShape: input.diamondShape || null,
+      diamondQuality: input.diamondQuality || null,
+      diamondPieces: input.diamondPieces ?? null,
+      diamondCaratWeight: input.diamondCaratWeight ?? null,
+      diamondWeight: input.diamondWeight ?? null,
+      diamondRate: input.diamondRate ?? null,
       makingChargePerGram: input.makingChargePerGram,
       fixedExpense: input.fixedExpense,
       sellingPrice: input.sellingPrice,
       quantityInStock: input.quantityInStock,
       reorderLevel: input.reorderLevel,
       subcategoryId: input.subcategoryId || null,
-      diamonds: { create: toDiamondCreateData(input.diamonds) },
     },
     include: PRODUCT_INCLUDE,
   });
@@ -218,24 +201,26 @@ export async function updateProduct(id: string, input: ProductInput) {
     if (existing) throw ApiError.conflict('A product with this design number already exists.');
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.productDiamond.deleteMany({ where: { productId: id } });
-    await tx.product.update({
-      where: { id },
-      data: {
-        designNumber: input.designNumber,
-        name: input.name,
-        metalType: input.metalType,
-        grossWeight: input.grossWeight,
-        metalRatePerGram: input.metalRatePerGram,
-        makingChargePerGram: input.makingChargePerGram,
-        fixedExpense: input.fixedExpense,
-        sellingPrice: input.sellingPrice,
-        reorderLevel: input.reorderLevel,
-        subcategoryId: input.subcategoryId || null,
-        diamonds: { create: toDiamondCreateData(input.diamonds) },
-      },
-    });
+  await prisma.product.update({
+    where: { id },
+    data: {
+      designNumber: input.designNumber,
+      name: input.name,
+      metalType: input.metalType,
+      grossWeight: input.grossWeight,
+      metalRatePerGram: input.metalRatePerGram,
+      diamondShape: input.diamondShape || null,
+      diamondQuality: input.diamondQuality || null,
+      diamondPieces: input.diamondPieces ?? null,
+      diamondCaratWeight: input.diamondCaratWeight ?? null,
+      diamondWeight: input.diamondWeight ?? null,
+      diamondRate: input.diamondRate ?? null,
+      makingChargePerGram: input.makingChargePerGram,
+      fixedExpense: input.fixedExpense,
+      sellingPrice: input.sellingPrice,
+      reorderLevel: input.reorderLevel,
+      subcategoryId: input.subcategoryId || null,
+    },
   });
 
   return getProduct(id);
@@ -244,10 +229,7 @@ export async function updateProduct(id: string, input: ProductInput) {
 export async function deleteProduct(id: string) {
   const product = await prisma.product.findUnique({ where: { id } });
   if (!product) throw ApiError.notFound('Product not found.');
-  await prisma.$transaction([
-    prisma.productDiamond.deleteMany({ where: { productId: id } }),
-    prisma.product.delete({ where: { id } }),
-  ]);
+  await prisma.product.delete({ where: { id } });
 }
 
 export async function restockProduct(id: string, input: RestockInput) {
