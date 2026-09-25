@@ -49,6 +49,10 @@ Enforced in `transitionSale()` (`sales.service.ts`):
 2. Inside one `$transaction` (15s timeout): for every item, calls `deductStockInTransaction(tx, productId, quantity, 'Sale ' + saleNumber)` (from `inventory.service.ts`) and updates `Sale.status` → `ISSUED` with `issuedAt = now()`.
 3. If any deduction would fail, the whole transaction rolls back — a sale is never left half-deducted.
 
+## Customer Deletion
+
+`deleteCustomer` (`customers.service.ts`) blocks deletion with `ApiError.badRequest('Cannot delete a customer that has sales or enquiries.')` if the customer has any `Sale` (any status) or any `Enquiry` — checked via `_count: { select: { sales: true, enquiries: true } }` on one query. Same "never silently orphan history" reasoning as the product/category/subcategory delete guards in `inventory-and-stock.md`.
+
 ## Invoicing (PDF)
 
 `sales.pdf.ts` generates a PDF invoice from `getSaleForInvoice(id)` — the raw Prisma result (not the flattened DTO), since the PDF layout needs the full nested customer/item/product data. Invoice generation reads data; it never mutates sale status.

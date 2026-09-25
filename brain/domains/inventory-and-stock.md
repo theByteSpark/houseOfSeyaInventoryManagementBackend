@@ -17,7 +17,7 @@ Since migration `20260924120000`, `Product` isn't just a catalog row — it's a 
 | Term | Formula |
 |---|---|
 | Metal Cost | `grossWeight × metalRatePerGram` |
-| Diamond Cost | `diamondCaratWeight × diamondRate` (0 if either is unset — `diamondWeight` is a client-requested reference field and never enters this formula) |
+| Diamond Cost | `diamondCaratWeight × diamondRate` (0 if both are unset — `diamondWeight` is a client-requested reference field and never enters this formula) |
 | Labour Cost | `makingChargePerGram × grossWeight` (the same `grossWeight` as Metal Cost) |
 | Total Cost | Metal Cost + Diamond Cost + Labour Cost + `fixedExpense` |
 | Tax | `Total Cost × 0.03` (the `TAX_RATE` constant in `inventory.service.ts`, a flat 3% — the same fixed rate `sales.service.ts` charges on a sale's subtotal, see `sales-and-invoicing.md`) |
@@ -25,6 +25,8 @@ Since migration `20260924120000`, `Product` isn't just a catalog row — it's a 
 | Selling Price | **not derived** — a required manual input (`Product.sellingPrice`), shown next to Final Amount as a reference figure only |
 
 The frontend (`ProductFormPage.tsx`) recomputes the exact same formulas live for instant feedback as the user types; this service's computation is the authority once saved — a client-sent computed number is never trusted.
+
+`diamondCaratWeight` and `diamondRate` must be provided as a pair — both set or both empty — enforced by a `.refine()` on `productInputSchema` (`inventory.validation.ts`) and mirrored on the frontend (see the frontend's `brain/architecture/feature-conventions.md` and `productCostSheet.ts`'s `diamondPairRefinement`). This exists so an incomplete pair fails validation instead of silently computing a $0 diamond cost.
 
 ## Attribute Options (Metal / Diamond Shape / Diamond Quality Picklists)
 
@@ -39,6 +41,8 @@ The frontend (`ProductFormPage.tsx`) recomputes the exact same formulas live for
 | Product Design Number is globally unique | `createProduct`/`updateProduct` | Rename the design number |
 | A category can't be deleted while it has subcategories | `deleteCategory` checks `_count.subcategories > 0` → 400 | Delete or reassign every subcategory first |
 | A subcategory can't be deleted while it has products or enquiries | `deleteSubcategory` checks `_count.products > 0`, then `prisma.enquiry.count({ where: { subcategoryId } })` → 400 either way | Delete/reassign every product and enquiry first |
+| A product that has ever been sold (any `SaleItem`, regardless of the sale's status) can't be deleted | `deleteProduct` checks `_count.saleItems > 0` → 400, `ApiError.badRequest('Cannot delete a product that has been sold.')` — sale history must never be silently orphaned | Sale history is permanent; there is no path to delete a sold product |
+| A product with only purchase/stock-movement history (never sold) can still be deleted | `deleteProduct` deletes its `PurchaseItem` and `StockMovement` rows in the same `$transaction` as the `Product` delete, once the sale-history check above passes | N/A — deliberately allows removing a design that was ordered/received but never sold |
 | `quantityInStock` never changes without a paired `StockMovement` row | Convention, not a DB constraint — every write path (`createProduct` initial stock, `restockProduct`, `deductStockInTransaction`, purchase receiving) writes both in the same operation/transaction | N/A — this is a code discipline, watch for it in review |
 
 ## Stock Movements

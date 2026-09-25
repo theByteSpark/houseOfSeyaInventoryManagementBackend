@@ -227,9 +227,20 @@ export async function updateProduct(id: string, input: ProductInput) {
 }
 
 export async function deleteProduct(id: string) {
-  const product = await prisma.product.findUnique({ where: { id } });
+  const product = await prisma.product.findUnique({
+    where: { id },
+    include: { _count: { select: { saleItems: true } } },
+  });
   if (!product) throw ApiError.notFound('Product not found.');
-  await prisma.product.delete({ where: { id } });
+  if (product._count.saleItems > 0) {
+    throw ApiError.badRequest('Cannot delete a product that has been sold.');
+  }
+
+  await prisma.$transaction([
+    prisma.purchaseItem.deleteMany({ where: { productId: id } }),
+    prisma.stockMovement.deleteMany({ where: { productId: id } }),
+    prisma.product.delete({ where: { id } }),
+  ]);
 }
 
 export async function restockProduct(id: string, input: RestockInput) {

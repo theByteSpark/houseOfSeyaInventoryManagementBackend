@@ -18,7 +18,10 @@ export const productInputSchema = z.object({
   quantityInStock: z.coerce.number().int().min(0),
   reorderLevel: z.coerce.number().int().min(0),
   subcategoryId: z.string().optional().or(z.literal('')),
-});
+}).refine(
+  (data) => (data.diamondCaratWeight != null) === (data.diamondRate != null),
+  { message: 'Enter both carat weight and rate to calculate diamond cost', path: ['diamondRate'] },
+);
 
 export const restockInputSchema = z.object({
   quantity: z.coerce.number().int().positive(),
