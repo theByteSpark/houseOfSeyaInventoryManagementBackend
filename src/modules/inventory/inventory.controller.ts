@@ -3,7 +3,7 @@ import { requireParam } from '@/utils/params';
 import { isPaginationRequested, parsePaginationParams } from '@/utils/pagination';
 import * as inventoryService from './inventory.service';
 
-const PRODUCT_SORTABLE_FIELDS = ['name', 'sku', 'subcategory', 'unitPrice', 'quantityInStock', 'createdAt'];
+const PRODUCT_SORTABLE_FIELDS = ['name', 'designNumber', 'subcategory', 'sellingPrice', 'quantityInStock', 'createdAt'];
 const CATEGORY_SORTABLE_FIELDS = ['name', 'subcategoryCount'];
 const SUBCATEGORY_SORTABLE_FIELDS = ['name', 'category', 'productCount'];
 

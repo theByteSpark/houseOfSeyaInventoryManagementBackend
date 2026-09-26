@@ -96,6 +96,14 @@ export async function updateCustomer(id: string, input: CustomerInput) {
 }
 
 export async function deleteCustomer(id: string) {
-  await getCustomer(id);
+  const customer = await prisma.customer.findUnique({
+    where: { id },
+    include: { _count: { select: { sales: true, enquiries: true } } },
+  });
+  if (!customer) throw ApiError.notFound('Customer not found.');
+  if (customer._count.sales > 0 || customer._count.enquiries > 0) {
+    throw ApiError.badRequest('Cannot delete a customer that has sales or enquiries.');
+  }
+
   await prisma.customer.delete({ where: { id } });
 }

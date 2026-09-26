@@ -43,6 +43,7 @@ model Customer {
   phone     String?
   address   String?
   sales     Sale[]
+  enquiries Enquiry[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -59,25 +60,52 @@ model Subcategory {
   categoryId String
   category   Category  @relation(fields: [categoryId], references: [id])
   products   Product[]
+  enquiries  Enquiry[]
 
   @@unique([categoryId, name])
 }
 
 model Product {
-  id              String          @id @default(uuid())
-  sku             String          @unique
-  name            String
-  description     String?
-  unitPrice       Decimal         @db.Decimal(10, 2)
-  quantityInStock Int             @default(0)
-  reorderLevel    Int             @default(0)
-  subcategoryId   String?
-  subcategory     Subcategory?    @relation(fields: [subcategoryId], references: [id])
-  saleItems       SaleItem[]
-  purchaseItems   PurchaseItem[]
-  stockMovements  StockMovement[]
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  id                  String          @id @default(uuid())
+  designNumber        String          @unique
+  name                String
+  metalType           String?
+  grossWeight         Decimal?        @db.Decimal(10, 3)
+  metalRatePerGram    Decimal?        @db.Decimal(10, 2)
+  diamondShape        String?
+  diamondQuality      String?
+  diamondPieces       Int?
+  diamondCaratWeight  Decimal?        @db.Decimal(10, 3)
+  diamondWeight       Decimal?        @db.Decimal(10, 3)
+  diamondRate         Decimal?        @db.Decimal(10, 2)
+  makingChargePerGram Decimal?        @db.Decimal(10, 2)
+  fixedExpense        Decimal         @db.Decimal(10, 2) @default(0)
+  sellingPrice        Decimal         @db.Decimal(10, 2)
+  quantityInStock     Int             @default(0)
+  reorderLevel        Int             @default(0)
+  subcategoryId       String?
+  subcategory         Subcategory?    @relation(fields: [subcategoryId], references: [id])
+  saleItems           SaleItem[]
+  purchaseItems       PurchaseItem[]
+  stockMovements      StockMovement[]
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+}
+
+enum AttributeType {
+  METAL
+  DIAMOND_SHAPE
+  DIAMOND_QUALITY
+}
+
+model AttributeOption {
+  id        String        @id @default(uuid())
+  type      AttributeType
+  label     String
+  sortOrder Int           @default(0)
+  createdAt DateTime      @default(now())
+
+  @@unique([type, label])
 }
 
 enum StockMovementType {
@@ -150,16 +178,18 @@ enum PurchaseStatus {
 }
 
 model Purchase {
-  id            String         @id @default(uuid())
-  purchaseNumber String        @unique
-  vendorId      String
-  vendor        Vendor         @relation(fields: [vendorId], references: [id])
-  status        PurchaseStatus @default(DRAFT)
-  items         PurchaseItem[]
-  orderedAt     DateTime?
-  receivedAt    DateTime?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id                String         @id @default(uuid())
+  purchaseNumber    String         @unique
+  vendorId          String
+  vendor            Vendor         @relation(fields: [vendorId], references: [id])
+  status            PurchaseStatus @default(DRAFT)
+  items             PurchaseItem[]
+  vendorInvoiceNumber String?
+  vendorInvoiceDate DateTime?
+  orderedAt         DateTime?
+  receivedAt        DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
 }
 
 model PurchaseItem {
@@ -172,4 +202,30 @@ model PurchaseItem {
   receivedQuantity Int      @default(0)
   unitCost         Decimal  @db.Decimal(10, 2)
   lineTotal        Decimal  @db.Decimal(10, 2)
+}
+
+model Enquiry {
+  id            String           @id @default(uuid())
+  customerId    String
+  customer      Customer         @relation(fields: [customerId], references: [id])
+  subcategoryId String?
+  subcategory   Subcategory?     @relation(fields: [subcategoryId], references: [id])
+  metalType     String
+  grossWeight   Decimal          @db.Decimal(10, 3)
+  diamonds      EnquiryDiamond[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+}
+
+model EnquiryDiamond {
+  id          String   @id @default(uuid())
+  enquiryId   String
+  enquiry     Enquiry  @relation(fields: [enquiryId], references: [id])
+  shape       String
+  quality     String
+  pieces      Int
+  caratWeight Decimal  @db.Decimal(10, 3)
+  createdAt   DateTime @default(now())
+
+  @@index([enquiryId])
 }

@@ -5,9 +5,11 @@ import type { PaginatedResult, PaginationParams } from '@/utils/pagination';
 import { deductStockInTransaction } from '@/modules/inventory/inventory.service';
 import type { SaleInput } from './sales.validation';
 
+export const TAX_RATE = 0.03;
+
 const SALE_INCLUDE = {
   customer: { select: { name: true, email: true, phone: true, address: true } },
-  items: { include: { product: { select: { name: true, sku: true } } } },
+  items: { include: { product: { select: { name: true, designNumber: true } } } },
 } satisfies Prisma.SaleInclude;
 
 type SaleWithRelations = Prisma.SaleGetPayload<{ include: typeof SALE_INCLUDE }>;
@@ -23,7 +25,7 @@ function toDto(sale: SaleWithRelations) {
       id: item.id,
       productId: item.productId,
       productName: item.product.name,
-      sku: item.product.sku,
+      designNumber: item.product.designNumber,
       quantity: item.quantity,
       unitPrice: Number(item.unitPrice),
       lineTotal: Number(item.lineTotal),
@@ -36,7 +38,7 @@ function toDto(sale: SaleWithRelations) {
   };
 }
 
-async function nextSaleNumber(): Promise<string> {
+export async function nextSaleNumber(): Promise<string> {
   const year = new Date().getFullYear();
   const count = await prisma.sale.count();
   return `SALE-${year}-${String(count + 1).padStart(4, '0')}`;
@@ -109,7 +111,7 @@ export async function createSale(input: SaleInput) {
     const product = productById.get(line.productId);
     if (!product) throw ApiError.notFound(`Product ${line.productId} not found.`);
 
-    const unitPrice = Number(product.unitPrice);
+    const unitPrice = Number(product.sellingPrice);
     const lineTotal = Math.round(unitPrice * line.quantity * 100) / 100;
     subtotal += lineTotal;
 
@@ -122,8 +124,7 @@ export async function createSale(input: SaleInput) {
   });
 
   subtotal = Math.round(subtotal * 100) / 100;
-  const taxRate = input.taxRate ?? 0.1;
-  const tax = Math.round(subtotal * taxRate * 100) / 100;
+  const tax = Math.round(subtotal * TAX_RATE * 100) / 100;
   const total = Math.round((subtotal + tax) * 100) / 100;
 
   const saleNumber = await nextSaleNumber();
@@ -161,7 +162,7 @@ export async function updateSale(id: string, input: SaleInput) {
     const product = productById.get(line.productId);
     if (!product) throw ApiError.notFound(`Product ${line.productId} not found.`);
 
-    const unitPrice = Number(product.unitPrice);
+    const unitPrice = Number(product.sellingPrice);
     const lineTotal = Math.round(unitPrice * line.quantity * 100) / 100;
     subtotal += lineTotal;
 
@@ -174,8 +175,7 @@ export async function updateSale(id: string, input: SaleInput) {
   });
 
   subtotal = Math.round(subtotal * 100) / 100;
-  const taxRate = input.taxRate ?? 0.1;
-  const tax = Math.round(subtotal * taxRate * 100) / 100;
+  const tax = Math.round(subtotal * TAX_RATE * 100) / 100;
   const total = Math.round((subtotal + tax) * 100) / 100;
 
   await prisma.$transaction(

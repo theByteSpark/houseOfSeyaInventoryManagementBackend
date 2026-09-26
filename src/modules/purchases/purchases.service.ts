@@ -6,7 +6,7 @@ import type { PurchaseInput, ReceiveInput } from './purchases.validation';
 
 const PURCHASE_INCLUDE = {
   vendor: { select: { companyName: true, contactPerson: true, email: true, phone: true, address: true } },
-  items: { include: { product: { select: { name: true, sku: true } } } },
+  items: { include: { product: { select: { name: true, designNumber: true } } } },
 } satisfies Prisma.PurchaseInclude;
 
 type PurchaseWithRelations = Prisma.PurchaseGetPayload<{ include: typeof PURCHASE_INCLUDE }>;
@@ -16,7 +16,7 @@ function toDto(purchase: PurchaseWithRelations) {
     id: item.id,
     productId: item.productId,
     productName: item.product.name,
-    sku: item.product.sku,
+    designNumber: item.product.designNumber,
     quantity: item.quantity,
     receivedQuantity: item.receivedQuantity,
     unitCost: Number(item.unitCost),
@@ -34,13 +34,15 @@ function toDto(purchase: PurchaseWithRelations) {
     items,
     subtotal,
     total: subtotal,
+    vendorInvoiceNumber: purchase.vendorInvoiceNumber,
+    vendorInvoiceDate: purchase.vendorInvoiceDate,
     orderedAt: purchase.orderedAt,
     receivedAt: purchase.receivedAt,
     createdAt: purchase.createdAt,
   };
 }
 
-async function nextPurchaseNumber(): Promise<string> {
+export async function nextPurchaseNumber(): Promise<string> {
   const year = new Date().getFullYear();
   const count = await prisma.purchase.count();
   return `PO-${year}-${String(count + 1).padStart(4, '0')}`;
@@ -129,6 +131,8 @@ export async function createPurchase(input: PurchaseInput) {
       purchaseNumber,
       vendorId: vendor.id,
       status: 'DRAFT',
+      vendorInvoiceNumber: input.vendorInvoiceNumber || null,
+      vendorInvoiceDate: input.vendorInvoiceDate ? new Date(input.vendorInvoiceDate) : null,
       items: { create: itemsData },
     },
     include: PURCHASE_INCLUDE,
@@ -170,6 +174,8 @@ export async function updatePurchase(id: string, input: PurchaseInput) {
         where: { id },
         data: {
           vendorId: vendor.id,
+          vendorInvoiceNumber: input.vendorInvoiceNumber || null,
+          vendorInvoiceDate: input.vendorInvoiceDate ? new Date(input.vendorInvoiceDate) : null,
           items: { create: itemsData },
         },
       });

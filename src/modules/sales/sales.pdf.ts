@@ -56,7 +56,7 @@ export async function generateInvoicePdf(
   let y = tableTop + 24;
   doc.font('Helvetica').fillColor('#333');
   for (const item of sale.items) {
-    doc.text(`${item.product.name} (${item.product.sku})`, columns.product, y, { width: 240 });
+    doc.text(`${item.product.name} (${item.product.designNumber})`, columns.product, y, { width: 240 });
     doc.text(String(item.quantity), columns.qty, y, { width: 50, align: 'right' });
     doc.text(formatCurrency(Number(item.unitPrice)), columns.unitPrice, y, { width: 90, align: 'right' });
     doc.text(formatCurrency(Number(item.lineTotal)), columns.lineTotal, y, { width: 90, align: 'right' });

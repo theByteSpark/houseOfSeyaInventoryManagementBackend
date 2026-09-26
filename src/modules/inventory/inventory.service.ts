@@ -4,24 +4,74 @@ import { ApiError } from '@/utils/apiError';
 import type { PaginatedResult, PaginationParams } from '@/utils/pagination';
 import type { CategoryInput, ProductInput, RestockInput, SubcategoryInput } from './inventory.validation';
 
+const TAX_RATE = 0.03;
+
 function toProductDto(product: {
   id: string;
-  sku: string;
+  designNumber: string;
   name: string;
-  description: string | null;
-  unitPrice: Prisma.Decimal;
+  metalType: string | null;
+  grossWeight: Prisma.Decimal | null;
+  metalRatePerGram: Prisma.Decimal | null;
+  diamondShape: string | null;
+  diamondQuality: string | null;
+  diamondPieces: number | null;
+  diamondCaratWeight: Prisma.Decimal | null;
+  diamondWeight: Prisma.Decimal | null;
+  diamondRate: Prisma.Decimal | null;
+  makingChargePerGram: Prisma.Decimal | null;
+  fixedExpense: Prisma.Decimal;
+  sellingPrice: Prisma.Decimal;
   quantityInStock: number;
   reorderLevel: number;
   subcategoryId: string | null;
   subcategory: { name: string; category: { id: string; name: string } } | null;
   createdAt: Date;
 }) {
+  const grossWeight = product.grossWeight !== null ? Number(product.grossWeight) : null;
+  const metalRatePerGram = product.metalRatePerGram !== null ? Number(product.metalRatePerGram) : null;
+  const makingChargePerGram = product.makingChargePerGram !== null ? Number(product.makingChargePerGram) : null;
+  const diamondCaratWeight = product.diamondCaratWeight !== null ? Number(product.diamondCaratWeight) : null;
+  const diamondWeight = product.diamondWeight !== null ? Number(product.diamondWeight) : null;
+  const diamondRate = product.diamondRate !== null ? Number(product.diamondRate) : null;
+  const fixedExpense = Number(product.fixedExpense);
+
+  const metalCost = grossWeight !== null && metalRatePerGram !== null
+    ? Math.round(grossWeight * metalRatePerGram * 100) / 100
+    : 0;
+  const labourCost = grossWeight !== null && makingChargePerGram !== null
+    ? Math.round(grossWeight * makingChargePerGram * 100) / 100
+    : 0;
+  const diamondCost = diamondCaratWeight !== null && diamondRate !== null
+    ? Math.round(diamondCaratWeight * diamondRate * 100) / 100
+    : 0;
+
+  const totalCost = Math.round((metalCost + diamondCost + labourCost + fixedExpense) * 100) / 100;
+  const taxAmount = Math.round(totalCost * TAX_RATE * 100) / 100;
+  const finalAmount = Math.round((totalCost + taxAmount) * 100) / 100;
+
   return {
     id: product.id,
-    sku: product.sku,
+    designNumber: product.designNumber,
     name: product.name,
-    description: product.description,
-    unitPrice: Number(product.unitPrice),
+    metalType: product.metalType,
+    grossWeight,
+    metalRatePerGram,
+    metalCost,
+    diamondShape: product.diamondShape,
+    diamondQuality: product.diamondQuality,
+    diamondPieces: product.diamondPieces,
+    diamondCaratWeight,
+    diamondWeight,
+    diamondRate,
+    diamondCost,
+    makingChargePerGram,
+    labourCost,
+    fixedExpense,
+    totalCost,
+    taxAmount,
+    finalAmount,
+    sellingPrice: Number(product.sellingPrice),
     quantityInStock: product.quantityInStock,
     reorderLevel: product.reorderLevel,
     subcategoryId: product.subcategoryId,
@@ -54,6 +104,7 @@ export async function listProductsPaginated(
     ? {
         OR: [
           { name: { contains: search, mode: 'insensitive' } },
+          { designNumber: { contains: search, mode: 'insensitive' } },
           { subcategory: { name: { contains: search, mode: 'insensitive' } } },
           { subcategory: { category: { name: { contains: search, mode: 'insensitive' } } } },
         ],
@@ -73,7 +124,7 @@ export async function listProductsPaginated(
   const orderBy: Prisma.ProductOrderByWithRelationInput =
     sortBy === 'subcategory'
       ? { subcategory: { name: sortDir } }
-      : sortBy === 'name' || sortBy === 'sku' || sortBy === 'unitPrice' || sortBy === 'quantityInStock' || sortBy === 'createdAt'
+      : sortBy === 'name' || sortBy === 'designNumber' || sortBy === 'sellingPrice' || sortBy === 'quantityInStock' || sortBy === 'createdAt'
         ? { [sortBy]: sortDir }
         : { createdAt: 'desc' };
 
@@ -101,15 +152,25 @@ export async function getProduct(id: string) {
 }
 
 export async function createProduct(input: ProductInput) {
-  const existing = await prisma.product.findUnique({ where: { sku: input.sku } });
-  if (existing) throw ApiError.conflict('A product with this SKU already exists.');
+  const existing = await prisma.product.findUnique({ where: { designNumber: input.designNumber } });
+  if (existing) throw ApiError.conflict('A product with this design number already exists.');
 
   const product = await prisma.product.create({
     data: {
-      sku: input.sku,
+      designNumber: input.designNumber,
       name: input.name,
-      description: input.description || null,
-      unitPrice: input.unitPrice,
+      metalType: input.metalType,
+      grossWeight: input.grossWeight,
+      metalRatePerGram: input.metalRatePerGram,
+      diamondShape: input.diamondShape || null,
+      diamondQuality: input.diamondQuality || null,
+      diamondPieces: input.diamondPieces ?? null,
+      diamondCaratWeight: input.diamondCaratWeight ?? null,
+      diamondWeight: input.diamondWeight ?? null,
+      diamondRate: input.diamondRate ?? null,
+      makingChargePerGram: input.makingChargePerGram,
+      fixedExpense: input.fixedExpense,
+      sellingPrice: input.sellingPrice,
       quantityInStock: input.quantityInStock,
       reorderLevel: input.reorderLevel,
       subcategoryId: input.subcategoryId || null,
@@ -135,31 +196,51 @@ export async function updateProduct(id: string, input: ProductInput) {
   const current = await prisma.product.findUnique({ where: { id } });
   if (!current) throw ApiError.notFound('Product not found.');
 
-  if (input.sku !== current.sku) {
-    const existing = await prisma.product.findUnique({ where: { sku: input.sku } });
-    if (existing) throw ApiError.conflict('A product with this SKU already exists.');
+  if (input.designNumber !== current.designNumber) {
+    const existing = await prisma.product.findUnique({ where: { designNumber: input.designNumber } });
+    if (existing) throw ApiError.conflict('A product with this design number already exists.');
   }
 
-  const product = await prisma.product.update({
+  await prisma.product.update({
     where: { id },
     data: {
-      sku: input.sku,
+      designNumber: input.designNumber,
       name: input.name,
-      description: input.description || null,
-      unitPrice: input.unitPrice,
+      metalType: input.metalType,
+      grossWeight: input.grossWeight,
+      metalRatePerGram: input.metalRatePerGram,
+      diamondShape: input.diamondShape || null,
+      diamondQuality: input.diamondQuality || null,
+      diamondPieces: input.diamondPieces ?? null,
+      diamondCaratWeight: input.diamondCaratWeight ?? null,
+      diamondWeight: input.diamondWeight ?? null,
+      diamondRate: input.diamondRate ?? null,
+      makingChargePerGram: input.makingChargePerGram,
+      fixedExpense: input.fixedExpense,
+      sellingPrice: input.sellingPrice,
       reorderLevel: input.reorderLevel,
       subcategoryId: input.subcategoryId || null,
     },
-    include: PRODUCT_INCLUDE,
   });
 
-  return toProductDto(product);
+  return getProduct(id);
 }
 
 export async function deleteProduct(id: string) {
-  const product = await prisma.product.findUnique({ where: { id } });
+  const product = await prisma.product.findUnique({
+    where: { id },
+    include: { _count: { select: { saleItems: true } } },
+  });
   if (!product) throw ApiError.notFound('Product not found.');
-  await prisma.product.delete({ where: { id } });
+  if (product._count.saleItems > 0) {
+    throw ApiError.badRequest('Cannot delete a product that has been sold.');
+  }
+
+  await prisma.$transaction([
+    prisma.purchaseItem.deleteMany({ where: { productId: id } }),
+    prisma.stockMovement.deleteMany({ where: { productId: id } }),
+    prisma.product.delete({ where: { id } }),
+  ]);
 }
 
 export async function restockProduct(id: string, input: RestockInput) {
@@ -389,6 +470,10 @@ export async function deleteSubcategory(id: string) {
   if (!subcategory) throw ApiError.notFound('Subcategory not found.');
   if (subcategory._count.products > 0) {
     throw ApiError.badRequest('Cannot delete a subcategory that still has products assigned to it.');
+  }
+  const enquiryCount = await prisma.enquiry.count({ where: { subcategoryId: id } });
+  if (enquiryCount > 0) {
+    throw ApiError.badRequest('Cannot delete a subcategory that still has enquiries assigned to it.');
   }
 
   await prisma.subcategory.delete({ where: { id } });
