@@ -10,6 +10,8 @@ export const purchaseInputSchema = z.object({
   vendorId: z.string().min(1),
   items: z.array(purchaseLineSchema).min(1),
   warehouseId: z.string().optional(),
+  status: z.enum(['ORDERED', 'INWARD_TRANSIT']).optional(),
+  completionDate: z.coerce.date().optional(),
 });
 
 export type PurchaseInput = z.infer<typeof purchaseInputSchema>;

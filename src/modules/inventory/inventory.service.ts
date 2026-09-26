@@ -61,6 +61,7 @@ type ProductWithRelations = {
   categoryId: string | null;
   category: { id: string; name: string } | null;
   stocks: { warehouseId: string; quantity: number; warehouse: { name: string } }[];
+  blockedQuantities: { warehouseId: string; quantity: number }[];
   createdAt: Date;
 };
 
@@ -69,6 +70,12 @@ function toProductDto(product: ProductWithRelations, viewerWarehouseId: string |
   const viewerStock = viewerWarehouseId
     ? product.stocks.find((s) => s.warehouseId === viewerWarehouseId)
     : undefined;
+
+  const blockedByWarehouse = new Map<string, number>();
+  for (const b of product.blockedQuantities) {
+    blockedByWarehouse.set(b.warehouseId, (blockedByWarehouse.get(b.warehouseId) ?? 0) + b.quantity);
+  }
+  const totalBlockedQuantity = product.blockedQuantities.reduce((sum, b) => sum + b.quantity, 0);
 
   return {
     id: product.id,
@@ -80,10 +87,12 @@ function toProductDto(product: ProductWithRelations, viewerWarehouseId: string |
     categoryName: product.category?.name ?? null,
     // Quantity at the viewer's own warehouse when scoped; total across all warehouses otherwise.
     quantityInStock: viewerWarehouseId ? (viewerStock?.quantity ?? 0) : totalQuantity,
+    blockedQuantity: viewerWarehouseId ? (blockedByWarehouse.get(viewerWarehouseId) ?? 0) : totalBlockedQuantity,
     stockByWarehouse: product.stocks.map((s) => ({
       warehouseId: s.warehouseId,
       warehouseName: s.warehouse.name,
       quantity: s.quantity,
+      blockedQuantity: blockedByWarehouse.get(s.warehouseId) ?? 0,
     })),
     createdAt: product.createdAt,
   };
@@ -92,6 +101,7 @@ function toProductDto(product: ProductWithRelations, viewerWarehouseId: string |
 const PRODUCT_INCLUDE = {
   category: { select: { id: true, name: true } },
   stocks: { include: { warehouse: { select: { name: true } } } },
+  blockedQuantities: { where: { status: 'OPEN' }, select: { warehouseId: true, quantity: true } },
 } satisfies Prisma.ProductInclude;
 
 // Warehouse-scoped roles always see their own warehouse. Company-level roles
@@ -248,15 +258,16 @@ export async function deleteProduct(id: string) {
           saleItems: { where: { sale: { status: { not: 'CANCELLED' } } } },
           purchaseItems: { where: { purchase: { status: { not: 'CANCELLED' } } } },
           enquiries: true,
+          blockedQuantities: { where: { status: 'OPEN' } },
         },
       },
     },
   });
   if (!product) throw ApiError.notFound('Product not found.');
-  const { saleItems, purchaseItems, enquiries } = product._count;
-  if (saleItems > 0 || purchaseItems > 0 || enquiries > 0) {
+  const { saleItems, purchaseItems, enquiries, blockedQuantities } = product._count;
+  if (saleItems > 0 || purchaseItems > 0 || enquiries > 0 || blockedQuantities > 0) {
     throw ApiError.badRequest(
-      'Cannot delete a product that has active sales, purchases, or enquiries linked to it.',
+      'Cannot delete a product that has active sales, purchases, enquiries, or blocked quantities linked to it.',
     );
   }
   await prisma.$transaction([

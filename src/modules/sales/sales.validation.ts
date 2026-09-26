@@ -10,6 +10,7 @@ export const saleInputSchema = z.object({
   customerId: z.string().min(1),
   items: z.array(saleLineSchema).min(1),
   warehouseId: z.string().optional(),
+  completionDate: z.coerce.date().optional(),
 });
 
 export type SaleInput = z.infer<typeof saleInputSchema>;

@@ -41,6 +41,7 @@ function toDto(sale: SaleWithRelations) {
     tax: Number(sale.tax),
     total: Number(sale.total),
     issuedAt: sale.issuedAt,
+    completionDate: sale.completionDate,
     createdAt: sale.createdAt,
   };
 }
@@ -186,6 +187,7 @@ export async function createSale(user: AuthenticatedUser, input: SaleInput) {
           warehouseId,
           status: 'OUTWARD_TRANSIT',
           issuedAt: new Date(),
+          completionDate: input.completionDate,
           subtotal,
           tax,
           total,
@@ -236,13 +238,117 @@ export async function createSale(user: AuthenticatedUser, input: SaleInput) {
   return toDto(sale);
 }
 
-// There is no longer a DRAFT state to edit into — a sale immediately moves
-// stock on creation — so updates are rejected. Kept as an explicit endpoint
-// (rather than removed) so clients get a clear 400 instead of a 404/405.
-export async function updateSale(user: AuthenticatedUser, id: string, _input: SaleInput) {
-  const existing = await prisma.sale.findFirst({ where: { id, ...scopeWarehouseWhere(user) } });
+// Editing a sale while it's still OUTWARD_TRANSIT reverses the stock impact
+// of its current line items, then re-applies the new ones — same as if the
+// old sale were cancelled and a new one created, but keeping the same
+// saleNumber/id. Throws if the new line items don't have enough stock once
+// the old ones are given back.
+export async function updateSale(user: AuthenticatedUser, id: string, input: SaleInput) {
+  const existing = await prisma.sale.findFirst({ where: { id, ...scopeWarehouseWhere(user) }, include: SALE_INCLUDE });
   if (!existing) throw ApiError.notFound('Sale not found.');
-  throw ApiError.badRequest('Sales cannot be edited after creation. Cancel and create a new sale instead.');
+  if (existing.status !== 'OUTWARD_TRANSIT') {
+    throw ApiError.badRequest('Only sales in outward transit can be edited.');
+  }
+
+  const customer = await prisma.customer.findUnique({ where: { id: input.customerId } });
+  if (!customer) throw ApiError.notFound('Customer not found.');
+
+  const warehouseId = existing.warehouseId;
+
+  const productIds = input.items.map((item) => item.productId);
+  const products = await prisma.product.findMany({ where: { id: { in: productIds } } });
+  const productById = new Map(products.map((p) => [p.id, p]));
+
+  let subtotal = 0;
+  const itemsData = input.items.map((line) => {
+    const product = productById.get(line.productId);
+    if (!product) throw ApiError.notFound(`Product ${line.productId} not found.`);
+
+    const unitPrice = line.unitPrice;
+    const lineTotal = Math.round(unitPrice * line.quantity * 100) / 100;
+    subtotal += lineTotal;
+
+    return {
+      productId: product.id,
+      productName: product.name,
+      quantity: line.quantity,
+      unitPrice,
+      lineTotal,
+    };
+  });
+
+  subtotal = Math.round(subtotal * 100) / 100;
+  const tax = Math.round(subtotal * SALES_TAX_RATE * 100) / 100;
+  const total = Math.round((subtotal + tax) * 100) / 100;
+
+  await prisma.$transaction(
+    async (tx) => {
+      // Give back stock for the sale's current items first.
+      for (const item of existing.items) {
+        await tx.productStock.upsert({
+          where: { productId_warehouseId: { productId: item.productId, warehouseId } },
+          update: { quantity: { increment: item.quantity } },
+          create: { productId: item.productId, warehouseId, quantity: item.quantity },
+        });
+      }
+
+      // Then validate and deduct stock for the new items.
+      for (const item of itemsData) {
+        const stock = await tx.productStock.findUnique({
+          where: { productId_warehouseId: { productId: item.productId, warehouseId } },
+        });
+        if (!stock || stock.quantity < item.quantity) {
+          throw ApiError.badRequest(`Not enough stock for ${item.productName}.`);
+        }
+      }
+      for (const item of itemsData) {
+        await tx.productStock.update({
+          where: { productId_warehouseId: { productId: item.productId, warehouseId } },
+          data: { quantity: { decrement: item.quantity } },
+        });
+      }
+
+      await tx.saleItem.deleteMany({ where: { saleId: id } });
+      await tx.sale.update({
+        where: { id },
+        data: {
+          customerId: customer.id,
+          completionDate: input.completionDate,
+          subtotal,
+          tax,
+          total,
+          items: {
+            create: itemsData.map((item) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              lineTotal: item.lineTotal,
+            })),
+          },
+        },
+      });
+    },
+    { timeout: 15000, maxWait: 15000 },
+  );
+
+  for (const item of itemsData) {
+    await checkLowStock(item.productId, warehouseId);
+  }
+
+  return getSale(user, id);
+}
+
+export async function completeSale(user: AuthenticatedUser, id: string) {
+  const sale = await prisma.sale.findFirst({ where: { id, ...scopeWarehouseWhere(user) } });
+  if (!sale) throw ApiError.notFound('Sale not found.');
+  if (sale.status !== 'OUTWARD_TRANSIT') {
+    throw ApiError.badRequest('Only sales in outward transit can be marked as done.');
+  }
+
+  // completionDate is overwritten to the actual completion date rather than
+  // kept at the original target, so it reflects when the sale really finished.
+  await prisma.sale.update({ where: { id }, data: { status: 'DONE', completionDate: new Date() } });
+  return getSale(user, id);
 }
 
 export async function cancelSale(user: AuthenticatedUser, id: string) {

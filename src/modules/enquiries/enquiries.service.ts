@@ -5,7 +5,7 @@ import type { AuthenticatedUser } from '@/middleware/authenticate';
 import { requireWarehouseId } from '@/utils/warehouseScope';
 import { checkLowStock } from '@/modules/inventory/inventory.service';
 import { createNotification } from '@/modules/notifications/notifications.service';
-import type { CreateEnquiryInput, ConfirmEnquiryInput } from './enquiries.validation';
+import type { CreateEnquiryInput, EditEnquiryInput, ConfirmEnquiryInput } from './enquiries.validation';
 
 const ENQUIRY_INCLUDE = {
   product: { select: { name: true, sku: true } },
@@ -130,6 +130,27 @@ export async function createEnquiry(input: CreateEnquiryInput) {
     include: ENQUIRY_INCLUDE,
   });
   return toDto(enquiry);
+}
+
+export async function editEnquiry(id: string, input: EditEnquiryInput) {
+  const existing = await prisma.enquiry.findUnique({ where: { id } });
+  if (!existing) throw ApiError.notFound('Enquiry not found.');
+  if (existing.status !== 'OPEN') throw ApiError.badRequest('Only an open enquiry can be edited.');
+
+  const updated = await prisma.enquiry.update({
+    where: { id },
+    data: { quantity: { increment: input.additionalQuantity } },
+    include: ENQUIRY_INCLUDE,
+  });
+  return toDto(updated);
+}
+
+export async function deleteEnquiry(id: string) {
+  const existing = await prisma.enquiry.findUnique({ where: { id } });
+  if (!existing) throw ApiError.notFound('Enquiry not found.');
+  if (existing.status !== 'OPEN') throw ApiError.badRequest('Only an open enquiry can be deleted.');
+
+  await prisma.enquiry.delete({ where: { id } });
 }
 
 // Confirming an enquiry means the vendor has already agreed to supply, so the

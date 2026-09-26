@@ -16,6 +16,8 @@ const PURCHASE_INCLUDE = {
 
 type PurchaseWithRelations = Prisma.PurchaseGetPayload<{ include: typeof PURCHASE_INCLUDE }>;
 
+const TAX_RATE = 0.18;
+
 function toDto(purchase: PurchaseWithRelations) {
   const items = purchase.items.map((item) => ({
     id: item.id,
@@ -28,6 +30,8 @@ function toDto(purchase: PurchaseWithRelations) {
   }));
 
   const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
+  const tax = Math.round(subtotal * TAX_RATE * 100) / 100;
+  const total = subtotal + tax;
 
   return {
     id: purchase.id,
@@ -39,9 +43,12 @@ function toDto(purchase: PurchaseWithRelations) {
     status: purchase.status,
     items,
     subtotal,
-    total: subtotal,
+    taxRate: TAX_RATE,
+    tax,
+    total,
     orderedAt: purchase.orderedAt,
     receivedAt: purchase.receivedAt,
+    completionDate: purchase.completionDate,
     createdAt: purchase.createdAt,
   };
 }
@@ -153,14 +160,16 @@ export async function createPurchase(user: AuthenticatedUser, input: PurchaseInp
   });
 
   const purchaseNumber = await nextPurchaseNumber();
+  const status: PurchaseStatus = input.status ?? 'INWARD_TRANSIT';
 
   const purchase = await prisma.purchase.create({
     data: {
       purchaseNumber,
       vendorId: vendor.id,
       warehouseId,
-      status: 'ORDERED',
+      status,
       orderedAt: new Date(),
+      completionDate: input.completionDate,
       items: { create: itemsData },
     },
     include: PURCHASE_INCLUDE,
@@ -172,7 +181,9 @@ export async function createPurchase(user: AuthenticatedUser, input: PurchaseInp
 export async function updatePurchase(user: AuthenticatedUser, id: string, input: PurchaseInput) {
   const existing = await prisma.purchase.findFirst({ where: { id, ...scopeWarehouseWhere(user) } });
   if (!existing) throw ApiError.notFound('Purchase not found.');
-  if (existing.status !== 'ORDERED') throw ApiError.badRequest('Only ordered purchases can be edited.');
+  if (existing.status !== 'ORDERED' && existing.status !== 'INWARD_TRANSIT') {
+    throw ApiError.badRequest('Only ordered or inward transit purchases can be edited.');
+  }
 
   const vendor = await prisma.vendor.findUnique({ where: { id: input.vendorId } });
   if (!vendor) throw ApiError.notFound('Vendor not found.');
@@ -201,6 +212,7 @@ export async function updatePurchase(user: AuthenticatedUser, id: string, input:
         where: { id },
         data: {
           vendorId: vendor.id,
+          completionDate: input.completionDate,
           items: { create: itemsData },
         },
       });
@@ -251,9 +263,12 @@ export async function markPurchaseInStock(user: AuthenticatedUser, id: string) {
         }
       }
 
+      // completionDate is overwritten to the actual completion date rather
+      // than kept at the original target, so it reflects when the purchase
+      // really finished.
       await tx.purchase.update({
         where: { id },
-        data: { status: 'IN_STOCK', receivedAt: new Date() },
+        data: { status: 'IN_STOCK', receivedAt: new Date(), completionDate: new Date() },
       });
     },
     { timeout: 15000, maxWait: 15000 },

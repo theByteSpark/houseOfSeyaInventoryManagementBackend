@@ -28,3 +28,9 @@ importExportRoutes.post('/sales', upload.single('file'), asyncHandler(controller
 
 importExportRoutes.get('/purchases/template', controller.getPurchasesTemplateHandler);
 importExportRoutes.post('/purchases', upload.single('file'), asyncHandler(controller.importPurchasesHandler));
+
+importExportRoutes.get('/customers/template', controller.getCustomersTemplateHandler);
+importExportRoutes.post('/customers', upload.single('file'), asyncHandler(controller.importCustomersHandler));
+
+importExportRoutes.get('/vendors/template', controller.getVendorsTemplateHandler);
+importExportRoutes.post('/vendors', upload.single('file'), asyncHandler(controller.importVendorsHandler));

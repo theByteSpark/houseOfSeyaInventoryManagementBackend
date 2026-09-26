@@ -14,3 +14,4 @@ salesRoutes.get('/:id', asyncHandler(salesController.getSaleHandler));
 salesRoutes.post('/', validateBody(saleInputSchema), asyncHandler(salesController.createSaleHandler));
 salesRoutes.patch('/:id', validateBody(saleInputSchema), asyncHandler(salesController.updateSaleHandler));
 salesRoutes.patch('/:id/cancel', asyncHandler(salesController.cancelSaleHandler));
+salesRoutes.patch('/:id/complete', asyncHandler(salesController.completeSaleHandler));

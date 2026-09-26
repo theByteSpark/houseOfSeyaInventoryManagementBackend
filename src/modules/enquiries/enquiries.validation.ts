@@ -5,6 +5,10 @@ export const createEnquirySchema = z.object({
   quantity: z.coerce.number().int().positive(),
 });
 
+export const editEnquirySchema = z.object({
+  additionalQuantity: z.coerce.number().int().positive(),
+});
+
 export const confirmEnquirySchema = z.object({
   warehouseId: z.string().min(1).optional(),
   vendor: z.object({
@@ -20,4 +24,5 @@ export const confirmEnquirySchema = z.object({
 });
 
 export type CreateEnquiryInput = z.infer<typeof createEnquirySchema>;
+export type EditEnquiryInput = z.infer<typeof editEnquirySchema>;
 export type ConfirmEnquiryInput = z.infer<typeof confirmEnquirySchema>;

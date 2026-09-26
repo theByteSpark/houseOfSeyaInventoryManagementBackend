@@ -6,7 +6,7 @@ import { ApiError } from '@/utils/apiError';
 import * as salesService from './sales.service';
 
 const SALE_SORTABLE_FIELDS = ['saleNumber', 'customer', 'status', 'total', 'createdAt'];
-const SALE_STATUSES: SaleStatus[] = ['OUTWARD_TRANSIT', 'CANCELLED'];
+const SALE_STATUSES: SaleStatus[] = ['OUTWARD_TRANSIT', 'DONE', 'CANCELLED'];
 
 function requireUser(req: Request) {
   if (!req.user) throw ApiError.unauthorized();
@@ -47,4 +47,8 @@ export async function updateSaleHandler(req: Request, res: Response) {
 
 export async function cancelSaleHandler(req: Request, res: Response) {
   res.json(await salesService.cancelSale(requireUser(req), requireParam(req, 'id')));
+}
+
+export async function completeSaleHandler(req: Request, res: Response) {
+  res.json(await salesService.completeSale(requireUser(req), requireParam(req, 'id')));
 }

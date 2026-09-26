@@ -15,6 +15,7 @@ import { warehousesRoutes } from '@/modules/warehouses/warehouses.routes';
 import { importExportRoutes } from '@/modules/import-export/import-export.routes';
 import { notificationsRoutes } from '@/modules/notifications/notifications.routes';
 import { enquiriesRoutes } from '@/modules/enquiries/enquiries.routes';
+import { blockedQuantityRoutes } from '@/modules/blocked-quantity/blocked-quantity.routes';
 import { stockTransfersRoutes } from '@/modules/stock-transfers/stock-transfers.routes';
 import { stockConversionsRoutes } from '@/modules/stock-conversions/stock-conversions.routes';
 
@@ -54,6 +55,7 @@ app.use('/api/v1/warehouses', warehousesRoutes);
 app.use('/api/v1/import', importExportRoutes);
 app.use('/api/v1/notifications', notificationsRoutes);
 app.use('/api/v1/enquiries', enquiriesRoutes);
+app.use('/api/v1/blocked-quantities', blockedQuantityRoutes);
 app.use('/api/v1/stock-transfers', stockTransfersRoutes);
 app.use('/api/v1/stock-conversions', stockConversionsRoutes);
 

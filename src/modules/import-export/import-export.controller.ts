@@ -3,6 +3,8 @@ import { ApiError } from '@/utils/apiError';
 import { buildProductImportTemplate, importProductsCsv } from './products.import';
 import { buildSalesImportTemplate, importSalesCsv } from './sales.import';
 import { buildPurchasesImportTemplate, importPurchasesCsv } from './purchases.import';
+import { buildCustomersImportTemplate, importCustomersCsv } from './customers.import';
+import { buildVendorsImportTemplate, importVendorsCsv } from './vendors.import';
 
 function requireUser(req: Request) {
   if (!req.user) throw ApiError.unauthorized();
@@ -56,5 +58,33 @@ export function getPurchasesTemplateHandler(_req: Request, res: Response) {
 export async function importPurchasesHandler(req: Request, res: Response) {
   const csv = requireUploadedFile(req);
   const result = await importPurchasesCsv(requireUser(req), csv, optionalWarehouseId(req));
+  res.json(result);
+}
+
+export function getCustomersTemplateHandler(_req: Request, res: Response) {
+  const csv = buildCustomersImportTemplate();
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="customers-import-template.csv"');
+  res.send(csv);
+}
+
+export async function importCustomersHandler(req: Request, res: Response) {
+  requireUser(req);
+  const csv = requireUploadedFile(req);
+  const result = await importCustomersCsv(csv);
+  res.json(result);
+}
+
+export function getVendorsTemplateHandler(_req: Request, res: Response) {
+  const csv = buildVendorsImportTemplate();
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="vendors-import-template.csv"');
+  res.send(csv);
+}
+
+export async function importVendorsHandler(req: Request, res: Response) {
+  requireUser(req);
+  const csv = requireUploadedFile(req);
+  const result = await importVendorsCsv(csv);
   res.json(result);
 }

@@ -24,6 +24,15 @@ export async function createEnquiryHandler(req: Request, res: Response) {
   res.status(201).json(await enquiriesService.createEnquiry(req.body));
 }
 
+export async function editEnquiryHandler(req: Request, res: Response) {
+  res.json(await enquiriesService.editEnquiry(requireParam(req, 'id'), req.body));
+}
+
+export async function deleteEnquiryHandler(req: Request, res: Response) {
+  await enquiriesService.deleteEnquiry(requireParam(req, 'id'));
+  res.status(204).send();
+}
+
 export async function confirmEnquiryHandler(req: Request, res: Response) {
   res.json(await enquiriesService.confirmEnquiry(requireUser(req), requireParam(req, 'id'), req.body));
 }
