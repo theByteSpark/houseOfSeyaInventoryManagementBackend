@@ -6,22 +6,19 @@ export const productInputSchema = z.object({
   metalType: z.string().min(1),
   grossWeight: z.coerce.number().positive(),
   metalRatePerGram: z.coerce.number().positive(),
-  diamondShape: z.string().optional(),
-  diamondQuality: z.string().optional(),
-  diamondPieces: z.coerce.number().int().positive().optional(),
-  diamondCaratWeight: z.coerce.number().positive().optional(),
-  diamondWeight: z.coerce.number().positive().optional(),
-  diamondRate: z.coerce.number().positive().optional(),
+  diamondShape: z.string().min(1),
+  diamondQuality: z.string().min(1),
+  diamondPieces: z.coerce.number().int().positive(),
+  diamondCaratWeight: z.coerce.number().positive(),
+  diamondWeight: z.coerce.number().positive(),
+  diamondRate: z.coerce.number().positive(),
   makingChargePerGram: z.coerce.number().min(0),
   fixedExpense: z.coerce.number().min(0).default(0),
   sellingPrice: z.coerce.number().positive(),
   quantityInStock: z.coerce.number().int().min(0),
   reorderLevel: z.coerce.number().int().min(0),
   subcategoryId: z.string().optional().or(z.literal('')),
-}).refine(
-  (data) => (data.diamondCaratWeight != null) === (data.diamondRate != null),
-  { message: 'Enter both carat weight and rate to calculate diamond cost', path: ['diamondRate'] },
-);
+});
 
 export const restockInputSchema = z.object({
   quantity: z.coerce.number().int().positive(),

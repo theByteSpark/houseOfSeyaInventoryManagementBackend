@@ -48,12 +48,12 @@ The upload accepts a `.csv`, `.xlsx`, or `.xls` file up to 5MB (`multer`, memory
 | `metalType` | Yes | Free text (normally one of the `METAL` `AttributeOption` labels) |
 | `grossWeight` | Yes | Positive number, grams |
 | `metalRatePerGram` | Yes | Positive number |
-| `diamondShape` | No | |
-| `diamondQuality` | No | |
-| `diamondPieces` | No | Non-negative integer |
-| `diamondCaratWeight` | No | Number |
-| `diamondWeight` | No | Number, reference-only field, matches `Product.diamondWeight` |
-| `diamondRate` | No | Number, per carat |
+| `diamondShape` | Yes | |
+| `diamondQuality` | Yes | |
+| `diamondPieces` | Yes | Positive integer |
+| `diamondCaratWeight` | Yes | Positive number |
+| `diamondWeight` | Yes | Positive number, reference-only field, matches `Product.diamondWeight` |
+| `diamondRate` | Yes | Positive number, per carat |
 | `makingChargePerGram` | Yes | Non-negative number |
 | `fixedExpense` | No | Non-negative number, defaults to `0` |
 | `sellingPrice` | Yes | Positive number |
@@ -61,7 +61,7 @@ The upload accepts a `.csv`, `.xlsx`, or `.xls` file up to 5MB (`multer`, memory
 | `reorderLevel` | No | Non-negative integer, defaults to `0` |
 
 Rules:
-- **Diamond fields are independent** — unlike `productInputSchema`'s UI-driven all-or-nothing pair check on carat weight/rate, the importer parses whatever diamond fields are given and leaves the rest `null`. Keeps the row format forgiving for bulk data entry.
+- **All six diamond columns are required, same as `productInputSchema`** — confirmed with the client that every design always has a diamond, there's no metal-only product (see `inventory-and-stock.md`). A row missing any of them errors out for that row rather than silently importing a diamond-less product.
 - If both `categoryName` and `subcategoryName` are given, `Category` is upserted by `name` and `Subcategory` upserted by `(categoryId, name)` — same two-step upsert `prisma/seed.ts` uses. Giving only one of the two is treated as "no classification," not an error.
 - **Update path never touches `quantityInStock`** — matches `updateProduct`'s behavior (`inventory.service.ts`), since stock only ever changes through a paired `StockMovement` write, never a plain field update.
 - **Create path with `quantityInStock > 0`** writes one `StockMovement` (`type: RESTOCK`, `reason: 'Bulk import'`) — mirrors `createProduct`'s `'Initial stock'` write, just with an import-specific reason string so the audit trail (`GET /inventory/products/:id/movements`) can tell the two apart.

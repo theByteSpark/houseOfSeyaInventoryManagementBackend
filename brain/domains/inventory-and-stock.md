@@ -12,12 +12,12 @@
 
 ## Jewelry Costing (Product as a Cost Sheet)
 
-Since migration `20260924120000`, `Product` isn't just a catalog row — it's a costing sheet. Every formula below runs in `inventory.service.ts`'s `toProductDto()`, computed fresh on every read from the raw inputs stored on `Product` — none of the results are stored columns (see `../database/data-conventions.md` and `../GOLDEN_RULES.md` on derived-not-stored fields). A product has **exactly one diamond block** (`diamondShape`/`diamondQuality`/`diamondPieces`/`diamondCaratWeight`/`diamondWeight`/`diamondRate`, all nullable, all plain columns on `Product` since migration `20260925180000`) — not a repeatable list.
+Since migration `20260924120000`, `Product` isn't just a catalog row — it's a costing sheet. Every formula below runs in `inventory.service.ts`'s `toProductDto()`, computed fresh on every read from the raw inputs stored on `Product` — none of the results are stored columns (see `../database/data-conventions.md` and `../GOLDEN_RULES.md` on derived-not-stored fields). A product has **exactly one diamond block** (`diamondShape`/`diamondQuality`/`diamondPieces`/`diamondCaratWeight`/`diamondWeight`/`diamondRate`, all plain columns on `Product` since migration `20260925180000`) — not a repeatable list.
 
 | Term | Formula |
 |---|---|
 | Metal Cost | `grossWeight × metalRatePerGram` |
-| Diamond Cost | `diamondCaratWeight × diamondRate` (0 if both are unset — `diamondWeight` is a client-requested reference field and never enters this formula) |
+| Diamond Cost | `diamondCaratWeight × diamondRate` (`diamondWeight` is a client-requested reference field and never enters this formula) |
 | Labour Cost | `makingChargePerGram × grossWeight` (the same `grossWeight` as Metal Cost) |
 | Total Cost | Metal Cost + Diamond Cost + Labour Cost + `fixedExpense` |
 | Tax | `Total Cost × 0.03` (the `TAX_RATE` constant in `inventory.service.ts`, a flat 3% — the same fixed rate `sales.service.ts` charges on a sale's subtotal, see `sales-and-invoicing.md`) |
@@ -26,7 +26,7 @@ Since migration `20260924120000`, `Product` isn't just a catalog row — it's a 
 
 The frontend (`ProductFormPage.tsx`) recomputes the exact same formulas live for instant feedback as the user types; this service's computation is the authority once saved — a client-sent computed number is never trusted.
 
-`diamondCaratWeight` and `diamondRate` must be provided as a pair — both set or both empty — enforced by a `.refine()` on `productInputSchema` (`inventory.validation.ts`) and mirrored on the frontend (see the frontend's `brain/architecture/feature-conventions.md` and `productCostSheet.ts`'s `diamondPairRefinement`). This exists so an incomplete pair fails validation instead of silently computing a $0 diamond cost.
+**All six diamond fields are required** on `productInputSchema` (`inventory.validation.ts`) — confirmed with the client that every design always has a diamond, there's no metal-only product. The columns stay nullable at the DB level only because pre-existing rows created before this rule was confirmed have no value — same reasoning `../database/schema-overview.md` already gives for `metalType`/`grossWeight` being nullable ("nullable only because rows created before this migration have no value"). An earlier version made these fields independently optional with a cross-field `.refine()` requiring `diamondCaratWeight`/`diamondRate` as a pair; that refine was removed once the fields became outright required — it can never be violated when both are always present.
 
 ## Attribute Options (Metal / Diamond Shape / Diamond Quality Picklists)
 

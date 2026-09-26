@@ -97,7 +97,7 @@ async function main() {
       quantityInStock: 10,
       reorderLevel: 3,
       subcategoryKey: 'Necklaces/Chains',
-      diamond: null,
+      diamond: { shape: 'Round', quality: 'Q2', pieces: 1, caratWeight: 0.05, weight: 0.01, rate: 25000 },
     },
     {
       designNumber: 'NCK-PND-011',
@@ -125,7 +125,7 @@ async function main() {
       quantityInStock: 40,
       reorderLevel: 10,
       subcategoryKey: 'Earrings/Studs',
-      diamond: null,
+      diamond: { shape: 'Round', quality: 'Q2', pieces: 2, caratWeight: 0.1, weight: 0.02, rate: 15000 },
     },
     {
       designNumber: 'EAR-HOP-021',
@@ -153,7 +153,7 @@ async function main() {
       quantityInStock: 5,
       reorderLevel: 10,
       subcategoryKey: 'Bracelets/Bangles',
-      diamond: null,
+      diamond: { shape: 'Square', quality: 'Q2', pieces: 4, caratWeight: 0.2, weight: 0.04, rate: 12000 },
     },
     {
       designNumber: 'BRC-BNG-031',

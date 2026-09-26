@@ -25,7 +25,7 @@ const TEMPLATE_HEADERS = [
 ];
 const TEMPLATE_SAMPLE_ROWS: (string | number)[][] = [
   ['RNG-ENG-100', 'Solitaire Engagement Ring', 'Rings', 'Engagement', 'Gold', '4.2', '6200', 'Round', 'Q1', '1', '0.5', '0.1', '45000', '450', '500', '68000', '6', '2'],
-  ['NCK-CHN-200', 'Rope Chain — 18in', 'Necklaces', 'Chains', 'Gold', '12.5', '6200', '', '', '', '', '', '', '350', '300', '95000', '10', '3'],
+  ['NCK-CHN-200', 'Rope Chain — 18in', 'Necklaces', 'Chains', 'Gold', '12.5', '6200', 'Round', 'Q2', '1', '0.05', '0.01', '25000', '350', '300', '95000', '10', '3'],
 ];
 
 export async function buildProductImportTemplate(format: 'csv' | 'xlsx'): Promise<string | Buffer> {
@@ -95,24 +95,29 @@ export async function importProducts(
       const reorderLevel = raw.reorderLevel ? Number(raw.reorderLevel) : 0;
       if (!Number.isInteger(reorderLevel) || reorderLevel < 0) throw new Error('reorderLevel must be a non-negative integer');
 
-      const diamondShape = raw.diamondShape?.trim() || null;
-      const diamondQuality = raw.diamondQuality?.trim() || null;
+      // Every design has exactly one diamond block — there is no metal-only product, so
+      // these are required on import the same way they are on the Add Product form.
+      const diamondShape = raw.diamondShape?.trim();
+      if (!diamondShape) throw new Error('diamondShape is required');
 
-      const diamondPieces = raw.diamondPieces ? Number(raw.diamondPieces) : null;
-      if (diamondPieces !== null && (!Number.isInteger(diamondPieces) || diamondPieces < 0)) {
-        throw new Error('diamondPieces must be a non-negative integer');
+      const diamondQuality = raw.diamondQuality?.trim();
+      if (!diamondQuality) throw new Error('diamondQuality is required');
+
+      const diamondPieces = Number(raw.diamondPieces);
+      if (!Number.isInteger(diamondPieces) || diamondPieces <= 0) {
+        throw new Error('diamondPieces must be a positive integer');
       }
 
-      const diamondCaratWeight = raw.diamondCaratWeight ? Number(raw.diamondCaratWeight) : null;
-      if (diamondCaratWeight !== null && !Number.isFinite(diamondCaratWeight)) {
-        throw new Error('diamondCaratWeight must be a number');
+      const diamondCaratWeight = Number(raw.diamondCaratWeight);
+      if (!Number.isFinite(diamondCaratWeight) || diamondCaratWeight <= 0) {
+        throw new Error('diamondCaratWeight must be a positive number');
       }
 
-      const diamondWeight = raw.diamondWeight ? Number(raw.diamondWeight) : null;
-      if (diamondWeight !== null && !Number.isFinite(diamondWeight)) throw new Error('diamondWeight must be a number');
+      const diamondWeight = Number(raw.diamondWeight);
+      if (!Number.isFinite(diamondWeight) || diamondWeight <= 0) throw new Error('diamondWeight must be a positive number');
 
-      const diamondRate = raw.diamondRate ? Number(raw.diamondRate) : null;
-      if (diamondRate !== null && !Number.isFinite(diamondRate)) throw new Error('diamondRate must be a number');
+      const diamondRate = Number(raw.diamondRate);
+      if (!Number.isFinite(diamondRate) || diamondRate <= 0) throw new Error('diamondRate must be a positive number');
 
       // Category/subcategory are upserted together, mirroring prisma/seed.ts's pattern —
       // a categoryName without a matching subcategoryName (or vice versa) is treated as
