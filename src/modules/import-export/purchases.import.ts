@@ -100,7 +100,7 @@ export async function importPurchasesCsv(
           purchaseNumber,
           vendorId: vendor.id,
           warehouseId,
-          status: 'ORDERED',
+          status: 'INWARD_TRANSIT',
           orderedAt: new Date(),
           completionDate,
           items: {
