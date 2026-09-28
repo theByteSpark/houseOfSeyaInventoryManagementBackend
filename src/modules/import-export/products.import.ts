@@ -5,12 +5,15 @@ import type { AuthenticatedUser } from '@/middleware/authenticate';
 import { requireWarehouseId } from '@/utils/warehouseScope';
 import { generateUniqueSku } from '@/modules/inventory/inventory.service';
 
-const TEMPLATE_HEADERS = ['name', 'description', 'category', 'reorderLevel', 'quantityInStock'];
+// Headers are the exact labels shown on ProductFormModal.tsx, not camelCase
+// field names, so a user filling the sheet can match each column to the
+// field they already know from the form.
+const TEMPLATE_HEADERS = ['Product name', 'Category', 'Description', 'Stock qty (kgs)', 'Reorder level (kgs)'];
 
 export function buildProductImportTemplate(): string {
   return toCsv(TEMPLATE_HEADERS, [
-    ['Cotton Poplin — Ivory', 'Premium combed cotton poplin, 60" width', 'Fabrics', '50', '100'],
-    ['Invisible Zippers — 22" Navy', 'Pack of 20', 'Trims & Accessories', '10', '20'],
+    ['Cotton Poplin — Ivory', 'Fabrics', 'Premium combed cotton poplin, 60" width', '100', '50'],
+    ['Invisible Zippers — 22" Navy', 'Trims & Accessories', 'Pack of 20', '20', '10'],
   ]);
 }
 
@@ -41,21 +44,23 @@ export async function importProductsCsv(
   for (let i = 0; i < rows.length; i++) {
     const rowNum = i + 2; // account for header row, 1-indexed
     const raw = rows[i];
-    const name = raw.name?.trim();
+    const name = raw['Product name']?.trim();
 
     try {
-      if (!name) throw new Error('name is required');
+      if (!name) throw new Error('Product name is required');
 
-      const reorderLevel = Number(raw.reorderLevel || 0);
-      if (!Number.isInteger(reorderLevel) || reorderLevel < 0) throw new Error('reorderLevel must be a non-negative integer');
+      const reorderLevel = Number(raw['Reorder level (kgs)'] || 0);
+      if (!Number.isInteger(reorderLevel) || reorderLevel < 0) {
+        throw new Error('Reorder level (kgs) must be a non-negative integer');
+      }
 
-      const quantityInStock = raw.quantityInStock ? Number(raw.quantityInStock) : 0;
+      const quantityInStock = raw['Stock qty (kgs)'] ? Number(raw['Stock qty (kgs)']) : 0;
       if (!Number.isInteger(quantityInStock) || quantityInStock < 0) {
-        throw new Error('quantityInStock must be a non-negative integer');
+        throw new Error('Stock qty (kgs) must be a non-negative integer');
       }
 
       let categoryId: string | null = null;
-      const categoryName = raw.category?.trim();
+      const categoryName = raw['Category']?.trim();
       if (categoryName) {
         const category = await prisma.category.upsert({
           where: { name: categoryName },
@@ -65,7 +70,7 @@ export async function importProductsCsv(
         categoryId = category.id;
       }
 
-      const description = raw.description?.trim() || null;
+      const description = raw['Description']?.trim() || null;
 
       // Matched by name, not sku — ProductFormModal never collects a sku
       // (inventory.service.ts auto-generates one on create), so name is the

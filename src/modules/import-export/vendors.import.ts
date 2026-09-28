@@ -2,7 +2,10 @@ import { prisma } from '@/config/db';
 import { ApiError } from '@/utils/apiError';
 import { parseCsvObjects, toCsv } from '@/utils/csv';
 
-const TEMPLATE_HEADERS = ['companyName', 'contactPerson', 'email', 'phone', 'address'];
+// Headers are the exact labels shown on VendorFormModal.tsx, not camelCase
+// field names, so a user filling the sheet can match each column to the
+// field they already know from the form.
+const TEMPLATE_HEADERS = ['Company name', 'Contact person', 'Email', 'Phone', 'Address'];
 
 export function buildVendorsImportTemplate(): string {
   return toCsv(TEMPLATE_HEADERS, [
@@ -36,17 +39,17 @@ export async function importVendorsCsv(
   for (let i = 0; i < rows.length; i++) {
     const rowNum = i + 2; // account for header row, 1-indexed
     const raw = rows[i];
-    const companyName = raw.companyName?.trim();
+    const companyName = raw['Company name']?.trim();
 
     try {
-      if (!companyName) throw new Error('companyName is required');
+      if (!companyName) throw new Error('Company name is required');
 
-      const email = raw.email?.trim() || null;
-      if (email && !EMAIL_RE.test(email)) throw new Error('email is not a valid email address');
+      const email = raw['Email']?.trim() || null;
+      if (email && !EMAIL_RE.test(email)) throw new Error('Email is not a valid email address');
 
-      const contactPerson = raw.contactPerson?.trim() || null;
-      const phone = raw.phone?.trim() || null;
-      const address = raw.address?.trim() || null;
+      const contactPerson = raw['Contact person']?.trim() || null;
+      const phone = raw['Phone']?.trim() || null;
+      const address = raw['Address']?.trim() || null;
 
       const existing = await prisma.vendor.findFirst({
         where: { companyName: { equals: companyName, mode: 'insensitive' } },

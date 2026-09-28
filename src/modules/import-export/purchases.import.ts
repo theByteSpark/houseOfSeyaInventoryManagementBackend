@@ -4,7 +4,11 @@ import { parseCsvObjects, toCsv } from '@/utils/csv';
 import type { AuthenticatedUser } from '@/middleware/authenticate';
 import { requireWarehouseId } from '@/utils/warehouseScope';
 
-const TEMPLATE_HEADERS = ['vendorName', 'productName', 'quantity', 'unitCost', 'completionDate'];
+// Headers are the exact labels shown on PurchaseFormPage.tsx ("Vendor",
+// "Product", "Qty (kgs)", "Price (per kg)", "Completion date"), not
+// camelCase field names, so a user filling the sheet can match each column
+// to the field they already know from the form.
+const TEMPLATE_HEADERS = ['Vendor', 'Product', 'Qty (kgs)', 'Price (per kg)', 'Completion date'];
 
 export function buildPurchasesImportTemplate(): string {
   return toCsv(TEMPLATE_HEADERS, [
@@ -53,23 +57,23 @@ export async function importPurchasesCsv(
     const raw = rows[i];
 
     try {
-      const vendorName = raw.vendorName?.trim();
-      if (!vendorName) throw new Error('vendorName is required');
+      const vendorName = raw['Vendor']?.trim();
+      if (!vendorName) throw new Error('Vendor is required');
 
-      const productName = raw.productName?.trim();
-      if (!productName) throw new Error('productName is required');
+      const productName = raw['Product']?.trim();
+      if (!productName) throw new Error('Product is required');
 
-      const quantity = Number(raw.quantity);
-      if (!Number.isInteger(quantity) || quantity <= 0) throw new Error('quantity must be a positive integer');
+      const quantity = Number(raw['Qty (kgs)']);
+      if (!Number.isInteger(quantity) || quantity <= 0) throw new Error('Qty (kgs) must be a positive integer');
 
-      const unitCost = Number(raw.unitCost);
-      if (!Number.isFinite(unitCost) || unitCost < 0) throw new Error('unitCost must be a non-negative number');
+      const unitCost = Number(raw['Price (per kg)']);
+      if (!Number.isFinite(unitCost) || unitCost < 0) throw new Error('Price (per kg) must be a non-negative number');
 
-      const completionDateRaw = raw.completionDate?.trim();
-      if (!completionDateRaw) throw new Error('completionDate is required (format: YYYY-MM-DD)');
-      if (!DATE_RE.test(completionDateRaw)) throw new Error('completionDate must be in YYYY-MM-DD format');
+      const completionDateRaw = raw['Completion date']?.trim();
+      if (!completionDateRaw) throw new Error('Completion date is required (format: YYYY-MM-DD)');
+      if (!DATE_RE.test(completionDateRaw)) throw new Error('Completion date must be in YYYY-MM-DD format');
       const completionDate = new Date(completionDateRaw);
-      if (Number.isNaN(completionDate.getTime())) throw new Error('completionDate is not a valid date');
+      if (Number.isNaN(completionDate.getTime())) throw new Error('Completion date is not a valid date');
 
       const vendor = await prisma.vendor.findFirst({
         where: { companyName: { equals: vendorName, mode: 'insensitive' } },
