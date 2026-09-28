@@ -61,6 +61,12 @@ npm start        # node dist/server.js
 
 `npm start` expects `DATABASE_URL` and both JWT secrets to already be set in the process environment (not `.env` — that's dev-only via `dotenv/config`, though `env.ts` imports it unconditionally so a `.env` file present in production would still be read).
 
+## Deployment
+
+**Rule: every client repo gets a `deploy.md` at the repo root** — not inside `brain/`, since it's an ops runbook a human follows step-by-step during a deploy, not architecture documentation. This is the same convention Paragon Resin's backend repo already follows; when setting up a new client/branch, copy its `deploy.md` as the starting shape and fill in that client's real values (VPS host, deploy path, pm2 app name, port, DB name/user, other pm2 apps sharing the box). This repo's own `deploy.md` was copied from Paragon Resin's as a placeholder and still has **Paragon Resin's values in it** — it must be filled in with House of Seya's actual production details before anyone follows it, or it will restart/query the wrong app.
+
+A `deploy.md` covers, at minimum: build-locally steps, what to copy to the VPS vs. what never to copy (`node_modules/`, `.env`), the on-VPS install/migrate/restart steps, a verify step, a "Common issues" troubleshooting section for the errors that actually recur, and a "Reference" section with the facts you'd otherwise have to ask someone for every time (DB name/user, other services on the same box).
+
 ## Common Pitfalls
 
 - Forgetting `prisma:generate` after pulling a schema change someone else made — TypeScript will show stale Prisma types until you regenerate.
