@@ -5,10 +5,10 @@ import type { AuthenticatedUser } from '@/middleware/authenticate';
 import { requireWarehouseId } from '@/utils/warehouseScope';
 
 // Headers are the exact labels shown on PurchaseFormPage.tsx ("Vendor",
-// "Product", "Qty (kgs)", "Price (per kg)", "Completion date"), not
+// "Product", "Qty (kgs)", "Price (per kg)", "Completion date (YYYY-MM-DD)"), not
 // camelCase field names, so a user filling the sheet can match each column
 // to the field they already know from the form.
-const TEMPLATE_HEADERS = ['Vendor', 'Product', 'Qty (kgs)', 'Price (per kg)', 'Completion date'];
+const TEMPLATE_HEADERS = ['Vendor', 'Product', 'Qty (kgs)', 'Price (per kg)', 'Completion date (YYYY-MM-DD)'];
 
 export function buildPurchasesImportTemplate(): string {
   return toCsv(TEMPLATE_HEADERS, [
@@ -69,11 +69,11 @@ export async function importPurchasesCsv(
       const unitCost = Number(raw['Price (per kg)']);
       if (!Number.isFinite(unitCost) || unitCost < 0) throw new Error('Price (per kg) must be a non-negative number');
 
-      const completionDateRaw = raw['Completion date']?.trim();
-      if (!completionDateRaw) throw new Error('Completion date is required (format: YYYY-MM-DD)');
-      if (!DATE_RE.test(completionDateRaw)) throw new Error('Completion date must be in YYYY-MM-DD format');
+      const completionDateRaw = raw['Completion date (YYYY-MM-DD)']?.trim();
+      if (!completionDateRaw) throw new Error('Completion date (YYYY-MM-DD) is required');
+      if (!DATE_RE.test(completionDateRaw)) throw new Error('Completion date (YYYY-MM-DD) must be in YYYY-MM-DD format');
       const completionDate = new Date(completionDateRaw);
-      if (Number.isNaN(completionDate.getTime())) throw new Error('Completion date is not a valid date');
+      if (Number.isNaN(completionDate.getTime())) throw new Error('Completion date (YYYY-MM-DD) is not a valid date');
 
       const vendor = await prisma.vendor.findFirst({
         where: { companyName: { equals: vendorName, mode: 'insensitive' } },

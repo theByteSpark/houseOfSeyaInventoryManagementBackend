@@ -6,10 +6,10 @@ import { requireWarehouseId } from '@/utils/warehouseScope';
 import { SALES_TAX_RATE } from '@/modules/sales/sales.service';
 
 // Headers are the exact labels shown on SaleFormPage.tsx ("Customer",
-// "Product", "Qty (kgs)", "Price (per kg)", "Completion date"), not
+// "Product", "Qty (kgs)", "Price (per kg)", "Completion date (YYYY-MM-DD)"), not
 // camelCase field names, so a user filling the sheet can match each column
 // to the field they already know from the form.
-const TEMPLATE_HEADERS = ['Customer', 'Product', 'Qty (kgs)', 'Price (per kg)', 'Completion date'];
+const TEMPLATE_HEADERS = ['Customer', 'Product', 'Qty (kgs)', 'Price (per kg)', 'Completion date (YYYY-MM-DD)'];
 
 export function buildSalesImportTemplate(): string {
   return toCsv(TEMPLATE_HEADERS, [
@@ -70,11 +70,11 @@ export async function importSalesCsv(
       const unitPrice = Number(raw['Price (per kg)']);
       if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('Price (per kg) must be a non-negative number');
 
-      const completionDateRaw = raw['Completion date']?.trim();
-      if (!completionDateRaw) throw new Error('Completion date is required (format: YYYY-MM-DD)');
-      if (!DATE_RE.test(completionDateRaw)) throw new Error('Completion date must be in YYYY-MM-DD format');
+      const completionDateRaw = raw['Completion date (YYYY-MM-DD)']?.trim();
+      if (!completionDateRaw) throw new Error('Completion date (YYYY-MM-DD) is required');
+      if (!DATE_RE.test(completionDateRaw)) throw new Error('Completion date (YYYY-MM-DD) must be in YYYY-MM-DD format');
       const completionDate = new Date(completionDateRaw);
-      if (Number.isNaN(completionDate.getTime())) throw new Error('Completion date is not a valid date');
+      if (Number.isNaN(completionDate.getTime())) throw new Error('Completion date (YYYY-MM-DD) is not a valid date');
 
       const customer = await prisma.customer.findFirst({
         where: { name: { equals: customerName, mode: 'insensitive' } },
