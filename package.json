@@ -10,7 +10,6 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
-    "db:cleanup-transactions": "tsx prisma/cleanupSalesPurchases.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
