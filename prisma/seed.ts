@@ -20,10 +20,26 @@ async function main() {
   const attributeOptions: { type: 'METAL' | 'DIAMOND_SHAPE' | 'DIAMOND_QUALITY'; label: string; sortOrder: number }[] = [
     { type: 'METAL', label: 'Gold', sortOrder: 0 },
     { type: 'METAL', label: 'Silver', sortOrder: 1 },
+    { type: 'METAL', label: 'Platinum', sortOrder: 2 },
+    { type: 'METAL', label: 'Rose Gold', sortOrder: 3 },
+    { type: 'METAL', label: 'White Gold', sortOrder: 4 },
     { type: 'DIAMOND_SHAPE', label: 'Square', sortOrder: 0 },
     { type: 'DIAMOND_SHAPE', label: 'Round', sortOrder: 1 },
+    { type: 'DIAMOND_SHAPE', label: 'Oval', sortOrder: 2 },
+    { type: 'DIAMOND_SHAPE', label: 'Princess', sortOrder: 3 },
+    { type: 'DIAMOND_SHAPE', label: 'Emerald', sortOrder: 4 },
+    { type: 'DIAMOND_SHAPE', label: 'Pear', sortOrder: 5 },
+    { type: 'DIAMOND_SHAPE', label: 'Heart', sortOrder: 6 },
+    { type: 'DIAMOND_SHAPE', label: 'Cushion', sortOrder: 7 },
+    { type: 'DIAMOND_SHAPE', label: 'Marquise', sortOrder: 8 },
+    { type: 'DIAMOND_SHAPE', label: 'Asscher', sortOrder: 9 },
     { type: 'DIAMOND_QUALITY', label: 'Q1', sortOrder: 0 },
     { type: 'DIAMOND_QUALITY', label: 'Q2', sortOrder: 1 },
+    { type: 'DIAMOND_QUALITY', label: 'Q3', sortOrder: 2 },
+    { type: 'DIAMOND_QUALITY', label: 'VVS1', sortOrder: 3 },
+    { type: 'DIAMOND_QUALITY', label: 'VVS2', sortOrder: 4 },
+    { type: 'DIAMOND_QUALITY', label: 'VS1', sortOrder: 5 },
+    { type: 'DIAMOND_QUALITY', label: 'VS2', sortOrder: 6 },
   ];
   for (const opt of attributeOptions) {
     await prisma.attributeOption.upsert({
