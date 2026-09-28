@@ -37,7 +37,9 @@ export async function login(input: LoginInput) {
   return { user: toPublicUser(user), ...tokens };
 }
 
-export async function refresh(refreshToken: string) {
+export async function refresh(refreshToken: string | undefined) {
+  if (!refreshToken) throw ApiError.unauthorized('No refresh token provided.');
+
   let payload: { sub: string };
   try {
     payload = verifyRefreshToken(refreshToken);
