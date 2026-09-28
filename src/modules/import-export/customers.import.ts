@@ -5,12 +5,12 @@ import { parseCsvObjects, toCsv } from '@/utils/csv';
 // Headers are the exact labels shown on CustomerFormModal.tsx, not
 // camelCase field names, so a user filling the sheet can match each
 // column to the field they already know from the form.
-const TEMPLATE_HEADERS = ['Name', 'Email', 'Phone', 'Address'];
+const TEMPLATE_HEADERS = ['Name', 'Phone', 'Email', 'Address'];
 
 export function buildCustomersImportTemplate(): string {
   return toCsv(TEMPLATE_HEADERS, [
-    ['Sunrise Textiles', 'orders@sunrisetextiles.com', '9876543210', '12 MG Road, Bengaluru'],
-    ['Coral Fashion House', 'contact@coralfashion.com', '9123456780', '45 Anna Salai, Chennai'],
+    ['Sunrise Textiles', '9876543210', 'orders@sunrisetextiles.com', '12 MG Road, Bengaluru'],
+    ['Coral Fashion House', '9123456780', 'contact@coralfashion.com', '45 Anna Salai, Chennai'],
   ]);
 }
 

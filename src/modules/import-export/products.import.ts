@@ -8,12 +8,12 @@ import { generateUniqueSku } from '@/modules/inventory/inventory.service';
 // Headers are the exact labels shown on ProductFormModal.tsx, not camelCase
 // field names, so a user filling the sheet can match each column to the
 // field they already know from the form.
-const TEMPLATE_HEADERS = ['Product name', 'Category', 'Description', 'Stock qty (kgs)', 'Reorder level (kgs)'];
+const TEMPLATE_HEADERS = ['Product name', 'Category', 'Stock qty (kgs)', 'Reorder level (kgs)', 'Description'];
 
 export function buildProductImportTemplate(): string {
   return toCsv(TEMPLATE_HEADERS, [
-    ['Cotton Poplin — Ivory', 'Fabrics', 'Premium combed cotton poplin, 60" width', '100', '50'],
-    ['Invisible Zippers — 22" Navy', 'Trims & Accessories', 'Pack of 20', '20', '10'],
+    ['Cotton Poplin — Ivory', 'Fabrics', '100', '50', 'Premium combed cotton poplin, 60" width'],
+    ['Invisible Zippers — 22" Navy', 'Trims & Accessories', '20', '10', 'Pack of 20'],
   ]);
 }
 

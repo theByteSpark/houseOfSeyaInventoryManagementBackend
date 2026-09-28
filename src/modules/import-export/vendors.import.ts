@@ -5,12 +5,12 @@ import { parseCsvObjects, toCsv } from '@/utils/csv';
 // Headers are the exact labels shown on VendorFormModal.tsx, not camelCase
 // field names, so a user filling the sheet can match each column to the
 // field they already know from the form.
-const TEMPLATE_HEADERS = ['Company name', 'Contact person', 'Email', 'Phone', 'Address'];
+const TEMPLATE_HEADERS = ['Company name', 'Contact person', 'Phone', 'Email', 'Address'];
 
 export function buildVendorsImportTemplate(): string {
   return toCsv(TEMPLATE_HEADERS, [
-    ['Everest Fabrics Pvt Ltd', 'Rakesh Sharma', 'sales@everestfabrics.com', '9988776655', '221 Industrial Area, Ludhiana'],
-    ['Zenith Trims Co.', 'Meera Nair', 'orders@zenithtrims.com', '9871234560', '18 Peenya Estate, Bengaluru'],
+    ['Everest Fabrics Pvt Ltd', 'Rakesh Sharma', '9988776655', 'sales@everestfabrics.com', '221 Industrial Area, Ludhiana'],
+    ['Zenith Trims Co.', 'Meera Nair', '9871234560', 'orders@zenithtrims.com', '18 Peenya Estate, Bengaluru'],
   ]);
 }
 
