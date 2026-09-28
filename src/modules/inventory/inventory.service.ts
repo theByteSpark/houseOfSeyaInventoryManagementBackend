@@ -10,7 +10,7 @@ import type { CategoryInput, ProductInput, RestockInput } from './inventory.vali
 // Derives a SKU from the product name (e.g. "Cotton Poplin — Ivory" ->
 // "COTTON-POPLIN-IVORY") since the UI no longer collects one directly.
 // Appends a numeric suffix on collision to keep the field unique.
-async function generateUniqueSku(name: string): Promise<string> {
+export async function generateUniqueSku(name: string): Promise<string> {
   const base =
     name
       .toUpperCase()

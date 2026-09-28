@@ -4,13 +4,12 @@ import { parseCsvObjects, toCsv } from '@/utils/csv';
 import type { AuthenticatedUser } from '@/middleware/authenticate';
 import { requireWarehouseId } from '@/utils/warehouseScope';
 
-const TEMPLATE_HEADERS = ['vendorName', 'inventoryName', 'quantity', 'unitCost'];
+const TEMPLATE_HEADERS = ['vendorName', 'productName', 'quantity', 'unitCost', 'completionDate'];
 
 export function buildPurchasesImportTemplate(): string {
   return toCsv(TEMPLATE_HEADERS, [
-    ['Atelier Moreau', 'Cotton Poplin Fabric', '100', '6.50'],
-    ['Atelier Moreau', 'Invisible Zipper', '20', '11.00'],
-    ['Cascade Studio', 'Merino Wool Yarn', '15', '22.00'],
+    ['Atelier Moreau', 'Cotton Poplin Fabric', '100', '6.50', '2026-12-31'],
+    ['Cascade Studio', 'Merino Wool Yarn', '15', '22.00', '2026-12-15'],
   ]);
 }
 
@@ -27,12 +26,9 @@ async function nextPurchaseNumber(): Promise<string> {
   return `PO-${year}-${String(count + 1).padStart(4, '0')}`;
 }
 
-interface ParsedLine {
-  row: number;
-  productId: string;
-  quantity: number;
-  unitCost: number;
-}
+// Matches the browser's native <input type="date"> value, so a date copied
+// straight from the completion-date picker on the Purchase form pastes in as-is.
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function importPurchasesCsv(
   user: AuthenticatedUser,
@@ -47,13 +43,11 @@ export async function importPurchasesCsv(
   const warehouseId = requireWarehouseId(user, warehouseIdInput);
 
   const results: ImportRowResult[] = [];
+  let createdCount = 0;
   let errorCount = 0;
 
-  // Group valid rows by vendor (case-insensitive) so every vendor with
-  // multiple rows in the sheet becomes a single purchase with one line item
-  // per row, instead of one purchase per row.
-  const groups = new Map<string, { vendorId: string; lines: ParsedLine[] }>();
-
+  // Every row is its own independent Purchase (one line item each) — no
+  // grouping by vendor, unlike the earlier version of this importer.
   for (let i = 0; i < rows.length; i++) {
     const rowNum = i + 2;
     const raw = rows[i];
@@ -62,8 +56,8 @@ export async function importPurchasesCsv(
       const vendorName = raw.vendorName?.trim();
       if (!vendorName) throw new Error('vendorName is required');
 
-      const inventoryName = raw.inventoryName?.trim();
-      if (!inventoryName) throw new Error('inventoryName is required');
+      const productName = raw.productName?.trim();
+      if (!productName) throw new Error('productName is required');
 
       const quantity = Number(raw.quantity);
       if (!Number.isInteger(quantity) || quantity <= 0) throw new Error('quantity must be a positive integer');
@@ -71,20 +65,55 @@ export async function importPurchasesCsv(
       const unitCost = Number(raw.unitCost);
       if (!Number.isFinite(unitCost) || unitCost < 0) throw new Error('unitCost must be a non-negative number');
 
+      const completionDateRaw = raw.completionDate?.trim();
+      if (!completionDateRaw) throw new Error('completionDate is required (format: YYYY-MM-DD)');
+      if (!DATE_RE.test(completionDateRaw)) throw new Error('completionDate must be in YYYY-MM-DD format');
+      const completionDate = new Date(completionDateRaw);
+      if (Number.isNaN(completionDate.getTime())) throw new Error('completionDate is not a valid date');
+
       const vendor = await prisma.vendor.findFirst({
         where: { companyName: { equals: vendorName, mode: 'insensitive' } },
       });
       if (!vendor) throw new Error(`No vendor found with name "${vendorName}"`);
 
-      const product = await prisma.product.findFirst({
-        where: { name: { equals: inventoryName, mode: 'insensitive' } },
+      // findMany, not findFirst: Product.name has no unique constraint (sku
+      // does), so a silent findFirst could match the wrong product if two
+      // products ever share a name. Fail loudly instead.
+      const matchingProducts = await prisma.product.findMany({
+        where: { name: { equals: productName, mode: 'insensitive' } },
       });
-      if (!product) throw new Error(`No product found with inventory name "${inventoryName}"`);
+      if (matchingProducts.length === 0) throw new Error(`No product found with name "${productName}"`);
+      if (matchingProducts.length > 1) {
+        throw new Error(`Multiple products found named "${productName}" — rename one or use a unique product name`);
+      }
+      const product = matchingProducts[0];
 
-      const groupKey = vendorName.toLowerCase();
-      const group = groups.get(groupKey) ?? { vendorId: vendor.id, lines: [] };
-      group.lines.push({ row: rowNum, productId: product.id, quantity, unitCost });
-      groups.set(groupKey, group);
+      const lineTotal = Math.round(unitCost * quantity * 100) / 100;
+      const purchaseNumber = await nextPurchaseNumber();
+
+      const purchase = await prisma.purchase.create({
+        data: {
+          purchaseNumber,
+          vendorId: vendor.id,
+          warehouseId,
+          status: 'ORDERED',
+          orderedAt: new Date(),
+          completionDate,
+          items: {
+            create: [
+              {
+                productId: product.id,
+                quantity,
+                unitCost,
+                lineTotal,
+              },
+            ],
+          },
+        },
+      });
+
+      createdCount++;
+      results.push({ row: rowNum, purchaseNumber: purchase.purchaseNumber, status: 'created' });
     } catch (err) {
       errorCount++;
       results.push({
@@ -94,39 +123,6 @@ export async function importPurchasesCsv(
       });
     }
   }
-
-  let createdCount = 0;
-
-  for (const { vendorId, lines } of groups.values()) {
-    if (lines.length === 0) continue;
-
-    const purchaseNumber = await nextPurchaseNumber();
-
-    const purchase = await prisma.purchase.create({
-      data: {
-        purchaseNumber,
-        vendorId,
-        warehouseId,
-        status: 'ORDERED',
-        orderedAt: new Date(),
-        items: {
-          create: lines.map((line) => ({
-            productId: line.productId,
-            quantity: line.quantity,
-            unitCost: line.unitCost,
-            lineTotal: Math.round(line.unitCost * line.quantity * 100) / 100,
-          })),
-        },
-      },
-    });
-
-    createdCount++;
-    for (const line of lines) {
-      results.push({ row: line.row, purchaseNumber: purchase.purchaseNumber, status: 'created' });
-    }
-  }
-
-  results.sort((a, b) => a.row - b.row);
 
   return { results, createdCount, errorCount };
 }
