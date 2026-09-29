@@ -140,6 +140,9 @@ model Sale {
   items         SaleItem[]
   subtotal      Decimal    @db.Decimal(10, 2)
   tax           Decimal    @db.Decimal(10, 2) @default(0)
+  discountPercent Decimal? @db.Decimal(5, 2)
+  discountAmount  Decimal? @db.Decimal(10, 2)
+  receivedAmount  Decimal  @db.Decimal(10, 2) @default(0)
   total         Decimal    @db.Decimal(10, 2)
   issuedAt      DateTime?
   createdAt     DateTime   @default(now())

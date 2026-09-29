@@ -14,7 +14,27 @@ const SALE_INCLUDE = {
 
 type SaleWithRelations = Prisma.SaleGetPayload<{ include: typeof SALE_INCLUDE }>;
 
+// Selling price is tax-inclusive: tax is still computed and reported (the
+// Reports "tax collected" figure), but is never added on top of the
+// subtotal. Total is the subtotal minus whichever discount was given — the
+// two discount fields are mutually exclusive, enforced in sales.validation.ts.
+export function computeSaleTotals(subtotal: number, discountPercent?: number, discountAmount?: number) {
+  const tax = Math.round(subtotal * TAX_RATE * 100) / 100;
+  const discountValue =
+    discountPercent !== undefined
+      ? Math.round(subtotal * (discountPercent / 100) * 100) / 100
+      : Math.round(Math.min(discountAmount ?? 0, subtotal) * 100) / 100;
+  const total = Math.round((subtotal - discountValue) * 100) / 100;
+  return { tax, discountValue, total };
+}
+
 function toDto(sale: SaleWithRelations) {
+  const discountPercent = sale.discountPercent !== null ? Number(sale.discountPercent) : null;
+  const discountAmount = sale.discountAmount !== null ? Number(sale.discountAmount) : null;
+  const subtotal = Number(sale.subtotal);
+  const total = Number(sale.total);
+  const receivedAmount = Number(sale.receivedAmount);
+
   return {
     id: sale.id,
     saleNumber: sale.saleNumber,
@@ -30,9 +50,14 @@ function toDto(sale: SaleWithRelations) {
       unitPrice: Number(item.unitPrice),
       lineTotal: Number(item.lineTotal),
     })),
-    subtotal: Number(sale.subtotal),
+    subtotal,
     tax: Number(sale.tax),
-    total: Number(sale.total),
+    discountPercent,
+    discountAmount,
+    discountValue: Math.round((subtotal - total) * 100) / 100,
+    total,
+    receivedAmount,
+    balanceDue: Math.round((total - receivedAmount) * 100) / 100,
     issuedAt: sale.issuedAt,
     createdAt: sale.createdAt,
   };
@@ -124,8 +149,7 @@ export async function createSale(input: SaleInput) {
   });
 
   subtotal = Math.round(subtotal * 100) / 100;
-  const tax = Math.round(subtotal * TAX_RATE * 100) / 100;
-  const total = Math.round((subtotal + tax) * 100) / 100;
+  const { tax, total } = computeSaleTotals(subtotal, input.discountPercent, input.discountAmount);
 
   const saleNumber = await nextSaleNumber();
 
@@ -136,6 +160,9 @@ export async function createSale(input: SaleInput) {
       status: 'DRAFT',
       subtotal,
       tax,
+      discountPercent: input.discountPercent ?? null,
+      discountAmount: input.discountAmount ?? null,
+      receivedAmount: input.receivedAmount ?? 0,
       total,
       items: { create: itemsData },
     },
@@ -175,8 +202,7 @@ export async function updateSale(id: string, input: SaleInput) {
   });
 
   subtotal = Math.round(subtotal * 100) / 100;
-  const tax = Math.round(subtotal * TAX_RATE * 100) / 100;
-  const total = Math.round((subtotal + tax) * 100) / 100;
+  const { tax, total } = computeSaleTotals(subtotal, input.discountPercent, input.discountAmount);
 
   await prisma.$transaction(
     async (tx) => {
@@ -187,6 +213,9 @@ export async function updateSale(id: string, input: SaleInput) {
           customerId: customer.id,
           subtotal,
           tax,
+          discountPercent: input.discountPercent ?? null,
+          discountAmount: input.discountAmount ?? null,
+          receivedAmount: input.receivedAmount ?? 0,
           total,
           items: { create: itemsData },
         },
@@ -216,6 +245,10 @@ async function transitionSale(id: string, status: SaleStatus) {
       }
     }
 
+    // Fully paid before/at issue (a deposit that already covers the total)
+    // goes straight to PAID instead of stopping at ISSUED.
+    const resultingStatus: SaleStatus = Number(sale.receivedAmount) >= Number(sale.total) ? 'PAID' : 'ISSUED';
+
     await prisma.$transaction(
       async (tx) => {
         for (const item of sale.items) {
@@ -225,7 +258,7 @@ async function transitionSale(id: string, status: SaleStatus) {
         }
         await tx.sale.update({
           where: { id },
-          data: { status: 'ISSUED', issuedAt: new Date() },
+          data: { status: resultingStatus, issuedAt: new Date() },
         });
       },
       { timeout: 15000, maxWait: 15000 },

@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit';
 import * as salesService from './sales.service';
+import { computeSaleTotals } from './sales.service';
 
 const numberFormatter = new Intl.NumberFormat('en-IN', {
   minimumFractionDigits: 2,
@@ -66,16 +67,39 @@ export async function generateInvoicePdf(
   doc.moveTo(50, y + 4).lineTo(550, y + 4).strokeColor('#ccc').stroke();
   y += 16;
 
+  const subtotal = Number(sale.subtotal);
+  const total = Number(sale.total);
+  const receivedAmount = Number(sale.receivedAmount);
+  const { tax, discountValue } = computeSaleTotals(
+    subtotal,
+    sale.discountPercent !== null ? Number(sale.discountPercent) : undefined,
+    sale.discountAmount !== null ? Number(sale.discountAmount) : undefined,
+  );
+  const balanceDue = Math.round((total - receivedAmount) * 100) / 100;
+
   doc.font('Helvetica').fillColor('#333');
   doc.text('Subtotal', columns.unitPrice, y, { width: 90, align: 'right' });
-  doc.text(formatCurrency(Number(sale.subtotal)), columns.lineTotal, y, { width: 90, align: 'right' });
+  doc.text(formatCurrency(subtotal), columns.lineTotal, y, { width: 90, align: 'right' });
   y += 18;
-  doc.text('Tax', columns.unitPrice, y, { width: 90, align: 'right' });
-  doc.text(formatCurrency(Number(sale.tax)), columns.lineTotal, y, { width: 90, align: 'right' });
+  doc.text('Collected tax (3%, included)', columns.unitPrice, y, { width: 90, align: 'right' });
+  doc.text(formatCurrency(tax), columns.lineTotal, y, { width: 90, align: 'right' });
   y += 18;
+  if (discountValue > 0) {
+    doc.text('Discount', columns.unitPrice, y, { width: 90, align: 'right' });
+    doc.text(`-${formatCurrency(discountValue)}`, columns.lineTotal, y, { width: 90, align: 'right' });
+    y += 18;
+  }
   doc.font('Helvetica-Bold').fillColor('#000');
   doc.text('Total', columns.unitPrice, y, { width: 90, align: 'right' });
-  doc.text(formatCurrency(Number(sale.total)), columns.lineTotal, y, { width: 90, align: 'right' });
+  doc.text(formatCurrency(total), columns.lineTotal, y, { width: 90, align: 'right' });
+  y += 18;
+  doc.font('Helvetica').fillColor('#333');
+  doc.text('Received', columns.unitPrice, y, { width: 90, align: 'right' });
+  doc.text(formatCurrency(receivedAmount), columns.lineTotal, y, { width: 90, align: 'right' });
+  y += 18;
+  doc.font('Helvetica-Bold').fillColor('#000');
+  doc.text('Balance due', columns.unitPrice, y, { width: 90, align: 'right' });
+  doc.text(formatCurrency(balanceDue), columns.lineTotal, y, { width: 90, align: 'right' });
 
   doc.end();
 
