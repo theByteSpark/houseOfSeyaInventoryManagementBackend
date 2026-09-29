@@ -18,28 +18,15 @@ async function main() {
   });
 
   const attributeOptions: { type: 'METAL' | 'DIAMOND_SHAPE' | 'DIAMOND_QUALITY'; label: string; sortOrder: number }[] = [
-    { type: 'METAL', label: 'Gold', sortOrder: 0 },
-    { type: 'METAL', label: 'Silver', sortOrder: 1 },
-    { type: 'METAL', label: 'Platinum', sortOrder: 2 },
-    { type: 'METAL', label: 'Rose Gold', sortOrder: 3 },
-    { type: 'METAL', label: 'White Gold', sortOrder: 4 },
-    { type: 'DIAMOND_SHAPE', label: 'Square', sortOrder: 0 },
-    { type: 'DIAMOND_SHAPE', label: 'Round', sortOrder: 1 },
-    { type: 'DIAMOND_SHAPE', label: 'Oval', sortOrder: 2 },
-    { type: 'DIAMOND_SHAPE', label: 'Princess', sortOrder: 3 },
-    { type: 'DIAMOND_SHAPE', label: 'Emerald', sortOrder: 4 },
-    { type: 'DIAMOND_SHAPE', label: 'Pear', sortOrder: 5 },
-    { type: 'DIAMOND_SHAPE', label: 'Heart', sortOrder: 6 },
-    { type: 'DIAMOND_SHAPE', label: 'Cushion', sortOrder: 7 },
-    { type: 'DIAMOND_SHAPE', label: 'Marquise', sortOrder: 8 },
-    { type: 'DIAMOND_SHAPE', label: 'Asscher', sortOrder: 9 },
-    { type: 'DIAMOND_QUALITY', label: 'Q1', sortOrder: 0 },
-    { type: 'DIAMOND_QUALITY', label: 'Q2', sortOrder: 1 },
-    { type: 'DIAMOND_QUALITY', label: 'Q3', sortOrder: 2 },
-    { type: 'DIAMOND_QUALITY', label: 'VVS1', sortOrder: 3 },
-    { type: 'DIAMOND_QUALITY', label: 'VVS2', sortOrder: 4 },
-    { type: 'DIAMOND_QUALITY', label: 'VS1', sortOrder: 5 },
-    { type: 'DIAMOND_QUALITY', label: 'VS2', sortOrder: 6 },
+    { type: 'METAL', label: 'Silver 92.5', sortOrder: 0 },
+    { type: 'METAL', label: 'Gold 9kt', sortOrder: 1 },
+    { type: 'METAL', label: 'Gold 14kt', sortOrder: 2 },
+    { type: 'METAL', label: 'Gold 18kt', sortOrder: 3 },
+    { type: 'DIAMOND_SHAPE', label: 'Round', sortOrder: 0 },
+    { type: 'DIAMOND_SHAPE', label: 'Mix', sortOrder: 1 },
+    { type: 'DIAMOND_SHAPE', label: 'Custom', sortOrder: 2 },
+    { type: 'DIAMOND_QUALITY', label: 'EF vvs/vs', sortOrder: 0 },
+    { type: 'DIAMOND_QUALITY', label: 'EF vvs', sortOrder: 1 },
   ];
   for (const opt of attributeOptions) {
     await prisma.attributeOption.upsert({
@@ -48,6 +35,23 @@ async function main() {
       create: opt,
     });
   }
+  // Prune options that used to be seeded but aren't in the list above anymore,
+  // so re-running seed converges to exactly this set instead of only adding to
+  // it. Existing products keep whatever string they already have on file —
+  // ProductCostSheetSections' withCurrentValue() shows it even once removed
+  // from the picker.
+  const labelsByType = new Map<string, string[]>();
+  for (const opt of attributeOptions) {
+    labelsByType.set(opt.type, [...(labelsByType.get(opt.type) ?? []), opt.label]);
+  }
+  await prisma.attributeOption.deleteMany({
+    where: {
+      OR: Array.from(labelsByType.entries()).map(([type, labels]) => ({
+        type: type as 'METAL' | 'DIAMOND_SHAPE' | 'DIAMOND_QUALITY',
+        label: { notIn: labels },
+      })),
+    },
+  });
 
   const categoryData = [
     { name: 'Rings', subcategories: ['Engagement', 'Cocktail'] },
@@ -76,7 +80,7 @@ async function main() {
     {
       designNumber: 'RNG-ENG-001',
       name: 'Solitaire Engagement Ring',
-      metalType: 'Gold',
+      metalType: 'Gold 18kt',
       grossWeight: 4.2,
       metalRatePerGram: 6200,
       makingChargePerGram: 450,
@@ -85,12 +89,12 @@ async function main() {
       quantityInStock: 6,
       reorderLevel: 2,
       subcategoryKey: 'Rings/Engagement',
-      diamond: { shape: 'Round', quality: 'Q1', pieces: 1, caratWeight: 0.5, weight: 0.1, rate: 45000 },
+      diamond: { shape: 'Round', quality: 'EF vvs', pieces: 1, caratWeight: 0.5, rate: 45000 },
     },
     {
       designNumber: 'RNG-CKT-002',
       name: 'Halo Cocktail Ring',
-      metalType: 'Gold',
+      metalType: 'Gold 18kt',
       grossWeight: 5.8,
       metalRatePerGram: 6200,
       makingChargePerGram: 500,
@@ -99,12 +103,12 @@ async function main() {
       quantityInStock: 4,
       reorderLevel: 2,
       subcategoryKey: 'Rings/Cocktail',
-      diamond: { shape: 'Round', quality: 'Q1', pieces: 1, caratWeight: 0.75, weight: 0.15, rate: 46000 },
+      diamond: { shape: 'Round', quality: 'EF vvs', pieces: 1, caratWeight: 0.75, rate: 46000 },
     },
     {
       designNumber: 'NCK-CHN-010',
       name: 'Rope Chain — 18in',
-      metalType: 'Gold',
+      metalType: 'Gold 14kt',
       grossWeight: 12.5,
       metalRatePerGram: 6200,
       makingChargePerGram: 350,
@@ -113,12 +117,12 @@ async function main() {
       quantityInStock: 10,
       reorderLevel: 3,
       subcategoryKey: 'Necklaces/Chains',
-      diamond: { shape: 'Round', quality: 'Q2', pieces: 1, caratWeight: 0.05, weight: 0.01, rate: 25000 },
+      diamond: { shape: 'Round', quality: 'EF vvs/vs', pieces: 1, caratWeight: 0.05, rate: 25000 },
     },
     {
       designNumber: 'NCK-PND-011',
       name: 'Solitaire Pendant',
-      metalType: 'Gold',
+      metalType: 'Gold 14kt',
       grossWeight: 2.1,
       metalRatePerGram: 6200,
       makingChargePerGram: 400,
@@ -127,12 +131,12 @@ async function main() {
       quantityInStock: 15,
       reorderLevel: 5,
       subcategoryKey: 'Necklaces/Pendants',
-      diamond: { shape: 'Round', quality: 'Q2', pieces: 1, caratWeight: 0.3, weight: 0.06, rate: 32000 },
+      diamond: { shape: 'Round', quality: 'EF vvs/vs', pieces: 1, caratWeight: 0.3, rate: 32000 },
     },
     {
       designNumber: 'EAR-STD-020',
       name: 'Classic Silver Studs',
-      metalType: 'Silver',
+      metalType: 'Silver 92.5',
       grossWeight: 3.0,
       metalRatePerGram: 85,
       makingChargePerGram: 150,
@@ -141,12 +145,12 @@ async function main() {
       quantityInStock: 40,
       reorderLevel: 10,
       subcategoryKey: 'Earrings/Studs',
-      diamond: { shape: 'Round', quality: 'Q2', pieces: 2, caratWeight: 0.1, weight: 0.02, rate: 15000 },
+      diamond: { shape: 'Round', quality: 'EF vvs/vs', pieces: 2, caratWeight: 0.1, rate: 15000 },
     },
     {
       designNumber: 'EAR-HOP-021',
       name: 'Diamond Hoop Earrings',
-      metalType: 'Gold',
+      metalType: 'Gold 18kt',
       grossWeight: 6.4,
       metalRatePerGram: 6200,
       makingChargePerGram: 420,
@@ -155,12 +159,12 @@ async function main() {
       quantityInStock: 5,
       reorderLevel: 2,
       subcategoryKey: 'Earrings/Hoops',
-      diamond: { shape: 'Square', quality: 'Q1', pieces: 16, caratWeight: 0.9, weight: 0.18, rate: 20000 },
+      diamond: { shape: 'Custom', quality: 'EF vvs', pieces: 16, caratWeight: 0.9, rate: 20000 },
     },
     {
       designNumber: 'BRC-BNG-030',
       name: 'Silver Bangle Set (2pc)',
-      metalType: 'Silver',
+      metalType: 'Silver 92.5',
       grossWeight: 22.0,
       metalRatePerGram: 85,
       makingChargePerGram: 120,
@@ -169,12 +173,12 @@ async function main() {
       quantityInStock: 5,
       reorderLevel: 10,
       subcategoryKey: 'Bracelets/Bangles',
-      diamond: { shape: 'Square', quality: 'Q2', pieces: 4, caratWeight: 0.2, weight: 0.04, rate: 12000 },
+      diamond: { shape: 'Custom', quality: 'EF vvs/vs', pieces: 4, caratWeight: 0.2, rate: 12000 },
     },
     {
       designNumber: 'BRC-BNG-031',
       name: 'Gold Tennis Bracelet',
-      metalType: 'Gold',
+      metalType: 'Gold 18kt',
       grossWeight: 9.6,
       metalRatePerGram: 6200,
       makingChargePerGram: 480,
@@ -183,7 +187,7 @@ async function main() {
       quantityInStock: 3,
       reorderLevel: 1,
       subcategoryKey: 'Bracelets/Bangles',
-      diamond: { shape: 'Round', quality: 'Q1', pieces: 24, caratWeight: 1.2, weight: 0.24, rate: 44000 },
+      diamond: { shape: 'Mix', quality: 'EF vvs', pieces: 24, caratWeight: 1.2, rate: 44000 },
     },
   ];
 
@@ -201,7 +205,6 @@ async function main() {
         diamondQuality: p.diamond?.quality,
         diamondPieces: p.diamond?.pieces,
         diamondCaratWeight: p.diamond?.caratWeight,
-        diamondWeight: p.diamond?.weight,
         diamondRate: p.diamond?.rate,
         makingChargePerGram: p.makingChargePerGram,
         fixedExpense: p.fixedExpense,

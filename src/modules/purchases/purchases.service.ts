@@ -3,10 +3,11 @@ import { prisma } from '@/config/db';
 import { ApiError } from '@/utils/apiError';
 import type { PaginatedResult, PaginationParams } from '@/utils/pagination';
 import type { PurchaseInput, ReceiveInput } from './purchases.validation';
+import { PRODUCT_INCLUDE, toProductDto } from '@/modules/inventory/inventory.service';
 
 const PURCHASE_INCLUDE = {
   vendor: { select: { companyName: true, contactPerson: true, email: true, phone: true, address: true } },
-  items: { include: { product: { select: { name: true, designNumber: true } } } },
+  items: { include: { product: { include: PRODUCT_INCLUDE } } },
 } satisfies Prisma.PurchaseInclude;
 
 type PurchaseWithRelations = Prisma.PurchaseGetPayload<{ include: typeof PURCHASE_INCLUDE }>;
@@ -17,6 +18,9 @@ function toDto(purchase: PurchaseWithRelations) {
     productId: item.productId,
     productName: item.product.name,
     designNumber: item.product.designNumber,
+    // Full cost-sheet DTO — the Purchase form's edit flow reconstructs each
+    // line's full detail card/edit-modal from this instead of just a name.
+    product: toProductDto(item.product),
     quantity: item.quantity,
     receivedQuantity: item.receivedQuantity,
     unitCost: Number(item.unitCost),

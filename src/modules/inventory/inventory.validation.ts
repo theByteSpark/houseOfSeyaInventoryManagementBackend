@@ -10,7 +10,6 @@ export const productInputSchema = z.object({
   diamondQuality: z.string().min(1),
   diamondPieces: z.coerce.number().int().positive(),
   diamondCaratWeight: z.coerce.number().positive(),
-  diamondWeight: z.coerce.number().positive(),
   diamondRate: z.coerce.number().positive(),
   makingChargePerGram: z.coerce.number().min(0),
   fixedExpense: z.coerce.number().min(0).default(0),

@@ -15,7 +15,6 @@ const TEMPLATE_HEADERS = [
   'diamondQuality',
   'diamondPieces',
   'diamondCaratWeight',
-  'diamondWeight',
   'diamondRate',
   'makingChargePerGram',
   'fixedExpense',
@@ -24,8 +23,8 @@ const TEMPLATE_HEADERS = [
   'reorderLevel',
 ];
 const TEMPLATE_SAMPLE_ROWS: (string | number)[][] = [
-  ['RNG-ENG-100', 'Solitaire Engagement Ring', 'Rings', 'Engagement', 'Gold', '4.2', '6200', 'Round', 'Q1', '1', '0.5', '0.1', '45000', '450', '500', '68000', '6', '2'],
-  ['NCK-CHN-200', 'Rope Chain — 18in', 'Necklaces', 'Chains', 'Gold', '12.5', '6200', 'Round', 'Q2', '1', '0.05', '0.01', '25000', '350', '300', '95000', '10', '3'],
+  ['RNG-ENG-100', 'Solitaire Engagement Ring', 'Rings', 'Engagement', 'Gold 18kt', '4.2', '6200', 'Round', 'EF vvs', '1', '0.5', '45000', '450', '500', '68000', '6', '2'],
+  ['NCK-CHN-200', 'Rope Chain — 18in', 'Necklaces', 'Chains', 'Gold 14kt', '12.5', '6200', 'Round', 'EF vvs/vs', '1', '0.05', '25000', '350', '300', '95000', '10', '3'],
 ];
 
 export async function buildProductImportTemplate(format: 'csv' | 'xlsx'): Promise<string | Buffer> {
@@ -113,9 +112,6 @@ export async function importProducts(
         throw new Error('diamondCaratWeight must be a positive number');
       }
 
-      const diamondWeight = Number(raw.diamondWeight);
-      if (!Number.isFinite(diamondWeight) || diamondWeight <= 0) throw new Error('diamondWeight must be a positive number');
-
       const diamondRate = Number(raw.diamondRate);
       if (!Number.isFinite(diamondRate) || diamondRate <= 0) throw new Error('diamondRate must be a positive number');
 
@@ -150,7 +146,6 @@ export async function importProducts(
         diamondQuality,
         diamondPieces,
         diamondCaratWeight,
-        diamondWeight,
         diamondRate,
         makingChargePerGram,
         fixedExpense,

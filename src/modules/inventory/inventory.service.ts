@@ -6,7 +6,7 @@ import type { CategoryInput, ProductInput, RestockInput, SubcategoryInput } from
 
 const TAX_RATE = 0.03;
 
-function toProductDto(product: {
+export function toProductDto(product: {
   id: string;
   designNumber: string;
   name: string;
@@ -17,7 +17,6 @@ function toProductDto(product: {
   diamondQuality: string | null;
   diamondPieces: number | null;
   diamondCaratWeight: Prisma.Decimal | null;
-  diamondWeight: Prisma.Decimal | null;
   diamondRate: Prisma.Decimal | null;
   makingChargePerGram: Prisma.Decimal | null;
   fixedExpense: Prisma.Decimal;
@@ -32,7 +31,6 @@ function toProductDto(product: {
   const metalRatePerGram = product.metalRatePerGram !== null ? Number(product.metalRatePerGram) : null;
   const makingChargePerGram = product.makingChargePerGram !== null ? Number(product.makingChargePerGram) : null;
   const diamondCaratWeight = product.diamondCaratWeight !== null ? Number(product.diamondCaratWeight) : null;
-  const diamondWeight = product.diamondWeight !== null ? Number(product.diamondWeight) : null;
   const diamondRate = product.diamondRate !== null ? Number(product.diamondRate) : null;
   const fixedExpense = Number(product.fixedExpense);
 
@@ -62,7 +60,6 @@ function toProductDto(product: {
     diamondQuality: product.diamondQuality,
     diamondPieces: product.diamondPieces,
     diamondCaratWeight,
-    diamondWeight,
     diamondRate,
     diamondCost,
     makingChargePerGram,
@@ -82,7 +79,7 @@ function toProductDto(product: {
   };
 }
 
-const PRODUCT_INCLUDE = {
+export const PRODUCT_INCLUDE = {
   subcategory: { include: { category: { select: { id: true, name: true } } } },
 } satisfies Prisma.ProductInclude;
 
@@ -166,7 +163,6 @@ export async function createProduct(input: ProductInput) {
       diamondQuality: input.diamondQuality || null,
       diamondPieces: input.diamondPieces ?? null,
       diamondCaratWeight: input.diamondCaratWeight ?? null,
-      diamondWeight: input.diamondWeight ?? null,
       diamondRate: input.diamondRate ?? null,
       makingChargePerGram: input.makingChargePerGram,
       fixedExpense: input.fixedExpense,
@@ -213,7 +209,6 @@ export async function updateProduct(id: string, input: ProductInput) {
       diamondQuality: input.diamondQuality || null,
       diamondPieces: input.diamondPieces ?? null,
       diamondCaratWeight: input.diamondCaratWeight ?? null,
-      diamondWeight: input.diamondWeight ?? null,
       diamondRate: input.diamondRate ?? null,
       makingChargePerGram: input.makingChargePerGram,
       fixedExpense: input.fixedExpense,
