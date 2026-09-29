@@ -245,7 +245,7 @@ export async function receivePurchaseItems(id: string, input: ReceiveInput) {
         });
         await tx.product.update({
           where: { id: update.productId },
-          data: { quantityInStock: { increment: update.qty } },
+          data: { quantityInStock: { increment: update.qty }, status: 'ACTIVE' },
         });
         await tx.stockMovement.create({
           data: {

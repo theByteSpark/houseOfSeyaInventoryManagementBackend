@@ -14,8 +14,8 @@ export async function listProductsHandler(req: Request, res: Response) {
   }
 
   const params = parsePaginationParams(req, PRODUCT_SORTABLE_FIELDS);
-  const stockFilter = req.query.stockFilter === 'low' ? 'low' : 'all';
-  res.json(await inventoryService.listProductsPaginated(params, stockFilter));
+  const subcategoryId = typeof req.query.subcategoryId === 'string' ? req.query.subcategoryId : undefined;
+  res.json(await inventoryService.listProductsPaginated(params, subcategoryId));
 }
 
 export async function getProductHandler(req: Request, res: Response) {
@@ -33,10 +33,6 @@ export async function updateProductHandler(req: Request, res: Response) {
 export async function deleteProductHandler(req: Request, res: Response) {
   await inventoryService.deleteProduct(requireParam(req, 'id'));
   res.status(204).send();
-}
-
-export async function restockProductHandler(req: Request, res: Response) {
-  res.json(await inventoryService.restockProduct(requireParam(req, 'id'), req.body));
 }
 
 export async function listStockMovementsHandler(req: Request, res: Response) {

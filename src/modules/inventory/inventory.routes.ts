@@ -6,7 +6,6 @@ import * as inventoryController from './inventory.controller';
 import {
   categoryInputSchema,
   productInputSchema,
-  restockInputSchema,
   subcategoryInputSchema,
 } from './inventory.validation';
 
@@ -19,11 +18,6 @@ inventoryRoutes.get('/products/:id', asyncHandler(inventoryController.getProduct
 inventoryRoutes.post('/products', validateBody(productInputSchema), asyncHandler(inventoryController.createProductHandler));
 inventoryRoutes.patch('/products/:id', validateBody(productInputSchema), asyncHandler(inventoryController.updateProductHandler));
 inventoryRoutes.delete('/products/:id', asyncHandler(inventoryController.deleteProductHandler));
-inventoryRoutes.post(
-  '/products/:id/restock',
-  validateBody(restockInputSchema),
-  asyncHandler(inventoryController.restockProductHandler),
-);
 inventoryRoutes.get('/products/:id/movements', asyncHandler(inventoryController.listStockMovementsHandler));
 
 inventoryRoutes.get('/categories', asyncHandler(inventoryController.listCategoriesHandler));

@@ -1,8 +1,8 @@
-import type { Prisma } from '@prisma/client';
+import type { Prisma, ProductStatus } from '@prisma/client';
 import { prisma } from '@/config/db';
 import { ApiError } from '@/utils/apiError';
 import type { PaginatedResult, PaginationParams } from '@/utils/pagination';
-import type { CategoryInput, ProductInput, RestockInput, SubcategoryInput } from './inventory.validation';
+import type { CategoryInput, ProductInput, SubcategoryInput } from './inventory.validation';
 
 const TAX_RATE = 0.03;
 
@@ -23,6 +23,7 @@ export function toProductDto(product: {
   sellingPrice: Prisma.Decimal;
   quantityInStock: number;
   reorderLevel: number;
+  status: ProductStatus;
   subcategoryId: string | null;
   subcategory: { name: string; category: { id: string; name: string } } | null;
   createdAt: Date;
@@ -71,6 +72,7 @@ export function toProductDto(product: {
     sellingPrice: Number(product.sellingPrice),
     quantityInStock: product.quantityInStock,
     reorderLevel: product.reorderLevel,
+    status: product.status,
     subcategoryId: product.subcategoryId,
     subcategoryName: product.subcategory?.name ?? null,
     categoryId: product.subcategory?.category.id ?? null,
@@ -93,7 +95,7 @@ export async function listProducts() {
 
 export async function listProductsPaginated(
   params: PaginationParams,
-  stockFilter: 'all' | 'low',
+  subcategoryId?: string,
 ): Promise<PaginatedResult<ReturnType<typeof toProductDto>>> {
   const { page, pageSize, search, sortBy, sortDir } = params;
 
@@ -108,15 +110,9 @@ export async function listProductsPaginated(
       }
     : {};
 
-  const lowStockIds =
-    stockFilter === 'low'
-      ? (
-          await prisma.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Product" WHERE "quantityInStock" <= "reorderLevel"`
-        ).map((row) => row.id)
-      : null;
-
-  const where: Prisma.ProductWhereInput =
-    lowStockIds !== null ? { AND: [searchFilter, { id: { in: lowStockIds } }] } : searchFilter;
+  const where: Prisma.ProductWhereInput = subcategoryId
+    ? { AND: [searchFilter, { subcategoryId }] }
+    : searchFilter;
 
   const orderBy: Prisma.ProductOrderByWithRelationInput =
     sortBy === 'subcategory'
@@ -169,6 +165,7 @@ export async function createProduct(input: ProductInput) {
       sellingPrice: input.sellingPrice,
       quantityInStock: input.quantityInStock,
       reorderLevel: input.reorderLevel,
+      status: input.status ?? 'ACTIVE',
       subcategoryId: input.subcategoryId || null,
     },
     include: PRODUCT_INCLUDE,
@@ -236,29 +233,6 @@ export async function deleteProduct(id: string) {
     prisma.stockMovement.deleteMany({ where: { productId: id } }),
     prisma.product.delete({ where: { id } }),
   ]);
-}
-
-export async function restockProduct(id: string, input: RestockInput) {
-  const product = await prisma.product.findUnique({ where: { id } });
-  if (!product) throw ApiError.notFound('Product not found.');
-
-  const [updated] = await prisma.$transaction([
-    prisma.product.update({
-      where: { id },
-      data: { quantityInStock: { increment: input.quantity } },
-      include: PRODUCT_INCLUDE,
-    }),
-    prisma.stockMovement.create({
-      data: {
-        productId: id,
-        type: 'RESTOCK',
-        quantity: input.quantity,
-        reason: input.reason || 'Manual restock',
-      },
-    }),
-  ]);
-
-  return toProductDto(updated);
 }
 
 export async function listStockMovements(productId: string) {

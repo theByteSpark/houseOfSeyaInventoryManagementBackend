@@ -240,8 +240,8 @@ async function transitionSale(id: string, status: SaleStatus) {
 
     for (const item of sale.items) {
       const product = productById.get(item.productId);
-      if (!product || product.quantityInStock < item.quantity) {
-        throw ApiError.badRequest(`Not enough stock for ${item.product.name}.`);
+      if (!product || product.status !== 'ACTIVE') {
+        throw ApiError.badRequest(`${item.product.name} is not available to sell.`);
       }
     }
 
@@ -255,6 +255,7 @@ async function transitionSale(id: string, status: SaleStatus) {
           for (const op of deductStockInTransaction(tx, item.productId, item.quantity, `Sale ${sale.saleNumber}`)) {
             await op;
           }
+          await tx.product.update({ where: { id: item.productId }, data: { status: 'SOLD' } });
         }
         await tx.sale.update({
           where: { id },

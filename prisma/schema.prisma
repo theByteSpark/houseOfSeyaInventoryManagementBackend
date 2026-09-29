@@ -83,6 +83,7 @@ model Product {
   sellingPrice        Decimal         @db.Decimal(10, 2)
   quantityInStock     Int             @default(0)
   reorderLevel        Int             @default(0)
+  status              ProductStatus   @default(ACTIVE)
   subcategoryId       String?
   subcategory         Subcategory?    @relation(fields: [subcategoryId], references: [id])
   saleItems           SaleItem[]
@@ -90,6 +91,12 @@ model Product {
   stockMovements      StockMovement[]
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
+}
+
+enum ProductStatus {
+  ORDERED
+  ACTIVE
+  SOLD
 }
 
 enum AttributeType {
