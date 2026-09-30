@@ -9,6 +9,7 @@ export const enquiryInputSchema = z.object({
   diamondQuality: z.string().optional().or(z.literal('')),
   diamondPieces: z.coerce.number().int().positive().optional(),
   diamondCaratWeight: z.coerce.number().positive().optional(),
+  sellingAmount: z.coerce.number().positive(),
 });
 
 export type EnquiryInput = z.infer<typeof enquiryInputSchema>;

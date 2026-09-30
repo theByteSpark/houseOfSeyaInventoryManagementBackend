@@ -26,6 +26,7 @@ function toDto(enquiry: EnquiryWithRelations) {
     diamondQuality: enquiry.diamondQuality,
     diamondPieces: enquiry.diamondPieces,
     diamondCaratWeight: enquiry.diamondCaratWeight !== null ? Number(enquiry.diamondCaratWeight) : null,
+    sellingAmount: enquiry.sellingAmount !== null ? Number(enquiry.sellingAmount) : null,
     createdAt: enquiry.createdAt,
   };
 }
@@ -101,6 +102,7 @@ export async function createEnquiry(input: EnquiryInput) {
       diamondQuality: input.diamondQuality || null,
       diamondPieces: input.diamondPieces ?? null,
       diamondCaratWeight: input.diamondCaratWeight ?? null,
+      sellingAmount: input.sellingAmount,
     },
     include: ENQUIRY_INCLUDE,
   });
@@ -131,6 +133,7 @@ export async function updateEnquiry(id: string, input: EnquiryInput) {
       diamondQuality: input.diamondQuality || null,
       diamondPieces: input.diamondPieces ?? null,
       diamondCaratWeight: input.diamondCaratWeight ?? null,
+      sellingAmount: input.sellingAmount,
     },
   });
 

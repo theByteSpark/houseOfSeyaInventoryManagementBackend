@@ -9,7 +9,11 @@ export const TAX_RATE = 0.03;
 
 const SALE_INCLUDE = {
   customer: { select: { name: true, email: true, phone: true, address: true } },
-  items: { include: { product: { select: { name: true, designNumber: true } } } },
+  items: {
+    include: {
+      product: { select: { name: true, designNumber: true, subcategory: { select: { name: true } } } },
+    },
+  },
 } satisfies Prisma.SaleInclude;
 
 type SaleWithRelations = Prisma.SaleGetPayload<{ include: typeof SALE_INCLUDE }>;
@@ -46,6 +50,7 @@ function toDto(sale: SaleWithRelations) {
       productId: item.productId,
       productName: item.product.name,
       designNumber: item.product.designNumber,
+      subcategoryName: item.product.subcategory?.name ?? null,
       quantity: item.quantity,
       unitPrice: Number(item.unitPrice),
       lineTotal: Number(item.lineTotal),

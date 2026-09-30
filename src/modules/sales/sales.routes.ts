@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '@/utils/asyncHandler';
 import { authenticate } from '@/middleware/authenticate';
+import { authorize } from '@/middleware/authorize';
 import { validateBody } from '@/middleware/validate';
 import * as salesController from './sales.controller';
 import { saleInputSchema } from './sales.validation';
@@ -15,5 +16,5 @@ salesRoutes.post('/', validateBody(saleInputSchema), asyncHandler(salesControlle
 salesRoutes.patch('/:id', validateBody(saleInputSchema), asyncHandler(salesController.updateSaleHandler));
 salesRoutes.patch('/:id/issue', asyncHandler(salesController.issueSaleHandler));
 salesRoutes.patch('/:id/pay', asyncHandler(salesController.markSalePaidHandler));
-salesRoutes.patch('/:id/cancel', asyncHandler(salesController.cancelSaleHandler));
+salesRoutes.patch('/:id/cancel', authorize('ADMIN'), asyncHandler(salesController.cancelSaleHandler));
 salesRoutes.get('/:id/invoice-pdf', asyncHandler(salesController.getInvoicePdfHandler));
