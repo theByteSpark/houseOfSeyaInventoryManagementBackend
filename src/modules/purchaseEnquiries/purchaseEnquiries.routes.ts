@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '@/utils/asyncHandler';
 import { authenticate } from '@/middleware/authenticate';
+import { authorize } from '@/middleware/authorize';
 import { validateBody } from '@/middleware/validate';
 import * as purchaseEnquiriesController from './purchaseEnquiries.controller';
 import { purchaseEnquiryInputSchema } from './purchaseEnquiries.validation';
@@ -21,4 +22,4 @@ purchaseEnquiriesRoutes.patch(
   validateBody(purchaseEnquiryInputSchema),
   asyncHandler(purchaseEnquiriesController.updatePurchaseEnquiryHandler),
 );
-purchaseEnquiriesRoutes.delete('/:id', asyncHandler(purchaseEnquiriesController.deletePurchaseEnquiryHandler));
+purchaseEnquiriesRoutes.delete('/:id', authorize('ADMIN'), asyncHandler(purchaseEnquiriesController.deletePurchaseEnquiryHandler));
