@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-export const enquiryInputSchema = z.object({
-  customerId: z.string().min(1),
+export const purchaseEnquiryInputSchema = z.object({
+  vendorId: z.string().min(1),
   subcategoryId: z.string().optional().or(z.literal('')),
   metalType: z.string().min(1),
   grossWeight: z.coerce.number().positive(),
@@ -11,4 +11,4 @@ export const enquiryInputSchema = z.object({
   diamondCaratWeight: z.coerce.number().positive().optional(),
 });
 
-export type EnquiryInput = z.infer<typeof enquiryInputSchema>;
+export type PurchaseEnquiryInput = z.infer<typeof purchaseEnquiryInputSchema>;
