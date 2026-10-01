@@ -5,13 +5,7 @@ import { isPaginationRequested, parsePaginationParams } from '@/utils/pagination
 import * as purchasesService from './purchases.service';
 
 const SORTABLE_FIELDS = ['purchaseNumber', 'vendor', 'status', 'createdAt'];
-const PURCHASE_STATUSES: PurchaseStatus[] = [
-  'DRAFT',
-  'ORDERED',
-  'PARTIALLY_RECEIVED',
-  'RECEIVED',
-  'CANCELLED',
-];
+const PURCHASE_STATUSES: PurchaseStatus[] = ['ORDERED', 'RECEIVED', 'CANCELLED'];
 
 export async function listPurchasesHandler(req: Request, res: Response) {
   if (!isPaginationRequested(req)) {
@@ -39,12 +33,8 @@ export async function updatePurchaseHandler(req: Request, res: Response) {
   res.json(await purchasesService.updatePurchase(requireParam(req, 'id'), req.body));
 }
 
-export async function orderPurchaseHandler(req: Request, res: Response) {
-  res.json(await purchasesService.orderPurchase(requireParam(req, 'id')));
-}
-
 export async function receivePurchaseHandler(req: Request, res: Response) {
-  res.json(await purchasesService.receivePurchaseItems(requireParam(req, 'id'), req.body));
+  res.json(await purchasesService.receivePurchase(requireParam(req, 'id')));
 }
 
 export async function cancelPurchaseHandler(req: Request, res: Response) {

@@ -188,7 +188,8 @@ export async function importPurchases(
         data: {
           purchaseNumber,
           vendorId: vendor.id,
-          status: 'DRAFT',
+          status: 'ORDERED',
+          orderedAt: new Date(),
           vendorInvoiceNumber,
           vendorInvoiceDate,
           items: {

@@ -1,8 +1,8 @@
-import type { PurchaseStatus, Prisma } from '@prisma/client';
+import type { Prisma, PurchaseStatus } from '@prisma/client';
 import { prisma } from '@/config/db';
 import { ApiError } from '@/utils/apiError';
 import type { PaginatedResult, PaginationParams } from '@/utils/pagination';
-import type { PurchaseInput, ReceiveInput } from './purchases.validation';
+import type { PurchaseInput } from './purchases.validation';
 import { PRODUCT_INCLUDE, toProductDto } from '@/modules/inventory/inventory.service';
 
 const PURCHASE_INCLUDE = {
@@ -134,7 +134,8 @@ export async function createPurchase(input: PurchaseInput) {
     data: {
       purchaseNumber,
       vendorId: vendor.id,
-      status: 'DRAFT',
+      status: 'ORDERED',
+      orderedAt: new Date(),
       vendorInvoiceNumber: input.vendorInvoiceNumber || null,
       vendorInvoiceDate: input.vendorInvoiceDate ? new Date(input.vendorInvoiceDate) : null,
       items: { create: itemsData },
@@ -148,7 +149,7 @@ export async function createPurchase(input: PurchaseInput) {
 export async function updatePurchase(id: string, input: PurchaseInput) {
   const existing = await prisma.purchase.findUnique({ where: { id } });
   if (!existing) throw ApiError.notFound('Purchase not found.');
-  if (existing.status !== 'DRAFT') throw ApiError.badRequest('Only draft purchases can be edited.');
+  if (existing.status !== 'ORDERED') throw ApiError.badRequest('Only ordered purchases can be edited.');
 
   const vendor = await prisma.vendor.findUnique({ where: { id: input.vendorId } });
   if (!vendor) throw ApiError.notFound('Vendor not found.');
@@ -190,81 +191,41 @@ export async function updatePurchase(id: string, input: PurchaseInput) {
   return getPurchase(id);
 }
 
-export async function orderPurchase(id: string) {
-  const purchase = await prisma.purchase.findUnique({ where: { id } });
-  if (!purchase) throw ApiError.notFound('Purchase not found.');
-  if (purchase.status !== 'DRAFT') throw ApiError.badRequest('Only draft purchases can be ordered.');
-
-  const updated = await prisma.purchase.update({
-    where: { id },
-    data: { status: 'ORDERED', orderedAt: new Date() },
-    include: PURCHASE_INCLUDE,
-  });
-
-  return toDto(updated);
-}
-
-export async function receivePurchaseItems(id: string, input: ReceiveInput) {
+export async function receivePurchase(id: string) {
   const purchase = await prisma.purchase.findUnique({
     where: { id },
     include: { items: true },
   });
   if (!purchase) throw ApiError.notFound('Purchase not found.');
-  if (purchase.status !== 'ORDERED' && purchase.status !== 'PARTIALLY_RECEIVED') {
-    throw ApiError.badRequest('Only ordered or partially received purchases can receive items.');
-  }
-
-  const itemById = new Map(purchase.items.map((item) => [item.productId, item]));
-
-  const updates: { productId: string; qty: number }[] = [];
-  for (const line of input.items) {
-    const item = itemById.get(line.productId);
-    if (!item) throw ApiError.badRequest(`Product ${line.productId} is not in this purchase.`);
-
-    const remaining = item.quantity - item.receivedQuantity;
-    if (line.receivedQty < 0) throw ApiError.badRequest('Received quantity cannot be negative.');
-    if (line.receivedQty > remaining) {
-      throw ApiError.badRequest(`Cannot receive more than ${remaining} remaining for ${item.productId}.`);
-    }
-    if (line.receivedQty > 0) {
-      updates.push({ productId: line.productId, qty: line.receivedQty });
-    }
-  }
-
-  if (updates.length === 0) {
-    throw ApiError.badRequest('No items to receive.');
-  }
+  if (purchase.status !== 'ORDERED') throw ApiError.badRequest('Only ordered purchases can be received.');
 
   await prisma.$transaction(
     async (tx) => {
-      for (const update of updates) {
-        const item = itemById.get(update.productId)!;
+      for (const item of purchase.items) {
+        const remaining = item.quantity - item.receivedQuantity;
+        if (remaining <= 0) continue;
+
         await tx.purchaseItem.update({
           where: { id: item.id },
-          data: { receivedQuantity: { increment: update.qty } },
+          data: { receivedQuantity: item.quantity },
         });
         await tx.product.update({
-          where: { id: update.productId },
-          data: { quantityInStock: { increment: update.qty }, status: 'ACTIVE' },
+          where: { id: item.productId },
+          data: { quantityInStock: { increment: remaining }, status: 'ACTIVE' },
         });
         await tx.stockMovement.create({
           data: {
-            productId: update.productId,
+            productId: item.productId,
             type: 'RESTOCK',
-            quantity: update.qty,
+            quantity: remaining,
             reason: `PO ${purchase.purchaseNumber}`,
           },
         });
       }
 
-      const allItems = await tx.purchaseItem.findMany({ where: { purchaseId: id } });
-      const allReceived = allItems.every((item) => item.receivedQuantity >= item.quantity);
-
       await tx.purchase.update({
         where: { id },
-        data: allReceived
-          ? { status: 'RECEIVED', receivedAt: new Date() }
-          : { status: 'PARTIALLY_RECEIVED' },
+        data: { status: 'RECEIVED', receivedAt: new Date() },
       });
     },
     { timeout: 15000, maxWait: 15000 },
@@ -276,8 +237,7 @@ export async function receivePurchaseItems(id: string, input: ReceiveInput) {
 export async function cancelPurchase(id: string) {
   const purchase = await prisma.purchase.findUnique({ where: { id } });
   if (!purchase) throw ApiError.notFound('Purchase not found.');
-  if (purchase.status === 'RECEIVED') throw ApiError.badRequest('A received purchase cannot be cancelled.');
-  if (purchase.status === 'CANCELLED') throw ApiError.badRequest('Purchase is already cancelled.');
+  if (purchase.status !== 'ORDERED') throw ApiError.badRequest('Only ordered purchases can be cancelled.');
 
   const updated = await prisma.purchase.update({
     where: { id },
