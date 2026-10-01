@@ -235,15 +235,44 @@ export async function receivePurchase(id: string) {
 }
 
 export async function cancelPurchase(id: string) {
-  const purchase = await prisma.purchase.findUnique({ where: { id } });
-  if (!purchase) throw ApiError.notFound('Purchase not found.');
-  if (purchase.status !== 'ORDERED') throw ApiError.badRequest('Only ordered purchases can be cancelled.');
-
-  const updated = await prisma.purchase.update({
+  const purchase = await prisma.purchase.findUnique({
     where: { id },
-    data: { status: 'CANCELLED' },
-    include: PURCHASE_INCLUDE,
+    include: {
+      items: { include: { product: { include: { _count: { select: { saleItems: true } } } } } },
+    },
   });
+  if (!purchase) throw ApiError.notFound('Purchase not found.');
+  if (purchase.status === 'CANCELLED') throw ApiError.badRequest('Purchase is already cancelled.');
+  if (purchase.status !== 'ORDERED' && purchase.status !== 'RECEIVED') {
+    throw ApiError.badRequest('Only ordered or received purchases can be cancelled.');
+  }
 
-  return toDto(updated);
+  if (purchase.status === 'RECEIVED') {
+    const alreadySold = purchase.items.find((item) => item.product._count.saleItems > 0);
+    if (alreadySold) {
+      throw ApiError.badRequest(`Cannot cancel — ${alreadySold.product.name} has already been sold.`);
+    }
+  }
+
+  await prisma.$transaction(
+    async (tx) => {
+      if (purchase.status === 'RECEIVED') {
+        // Every product on a purchase exists solely because of that
+        // purchase (one-of-a-kind, per inventory.service.ts's deleteProduct
+        // comment) -- cancelling a received one undoes the acquisition
+        // entirely, so the product is deleted from Inventory the same way,
+        // guarded by the same "not already sold" check above.
+        for (const item of purchase.items) {
+          await tx.stockMovement.deleteMany({ where: { productId: item.productId } });
+          await tx.purchaseItem.deleteMany({ where: { productId: item.productId } });
+          await tx.product.delete({ where: { id: item.productId } });
+        }
+      }
+
+      await tx.purchase.update({ where: { id }, data: { status: 'CANCELLED' } });
+    },
+    { timeout: 15000, maxWait: 15000 },
+  );
+
+  return getPurchase(id);
 }
