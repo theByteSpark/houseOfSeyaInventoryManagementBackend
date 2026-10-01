@@ -6,7 +6,7 @@ import * as salesService from './sales.service';
 import { generateInvoicePdf } from './sales.pdf';
 
 const SALE_SORTABLE_FIELDS = ['saleNumber', 'customer', 'status', 'total', 'createdAt'];
-const SALE_STATUSES: SaleStatus[] = ['DRAFT', 'ISSUED', 'PAID', 'CANCELLED'];
+const SALE_STATUSES: SaleStatus[] = ['SOLD', 'PAID', 'CANCELLED'];
 
 export async function listSalesHandler(req: Request, res: Response) {
   if (!isPaginationRequested(req)) {
@@ -30,10 +30,6 @@ export async function createSaleHandler(req: Request, res: Response) {
 
 export async function updateSaleHandler(req: Request, res: Response) {
   res.json(await salesService.updateSale(requireParam(req, 'id'), req.body));
-}
-
-export async function issueSaleHandler(req: Request, res: Response) {
-  res.json(await salesService.issueSale(requireParam(req, 'id')));
 }
 
 export async function markSalePaidHandler(req: Request, res: Response) {

@@ -133,8 +133,7 @@ model StockMovement {
 }
 
 enum SaleStatus {
-  DRAFT
-  ISSUED
+  SOLD
   PAID
   CANCELLED
 }
@@ -144,7 +143,7 @@ model Sale {
   saleNumber    String     @unique
   customerId    String
   customer      Customer   @relation(fields: [customerId], references: [id])
-  status        SaleStatus @default(DRAFT)
+  status        SaleStatus @default(SOLD)
   items         SaleItem[]
   subtotal      Decimal    @db.Decimal(10, 2)
   tax           Decimal    @db.Decimal(10, 2) @default(0)
@@ -152,7 +151,7 @@ model Sale {
   discountAmount  Decimal? @db.Decimal(10, 2)
   receivedAmount  Decimal  @db.Decimal(10, 2) @default(0)
   total         Decimal    @db.Decimal(10, 2)
-  issuedAt      DateTime?
+  soldAt        DateTime?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 }
@@ -182,9 +181,7 @@ model Vendor {
 }
 
 enum PurchaseStatus {
-  DRAFT
   ORDERED
-  PARTIALLY_RECEIVED
   RECEIVED
   CANCELLED
 }
@@ -194,7 +191,7 @@ model Purchase {
   purchaseNumber    String         @unique
   vendorId          String
   vendor            Vendor         @relation(fields: [vendorId], references: [id])
-  status            PurchaseStatus @default(DRAFT)
+  status            PurchaseStatus @default(ORDERED)
   items             PurchaseItem[]
   vendorInvoiceNumber String?
   vendorInvoiceDate DateTime?

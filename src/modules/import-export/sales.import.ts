@@ -3,6 +3,7 @@ import { ApiError } from '@/utils/apiError';
 import { toCsv } from '@/utils/csv';
 import { buildExcelTemplate } from '@/utils/excel';
 import { nextSaleNumber, TAX_RATE } from '@/modules/sales/sales.service';
+import { deductStockInTransaction } from '@/modules/inventory/inventory.service';
 
 // One row = one sale with exactly one line item — every product is one-of-a-
 // kind, so there's no quantity concept here, same as Purchases. No discount
@@ -55,6 +56,7 @@ export async function importSales(
 
       const product = await prisma.product.findUnique({ where: { designNumber } });
       if (!product) throw new Error(`No product found with design number ${designNumber}`);
+      if (product.status !== 'ACTIVE') throw new Error(`${product.name} is not available to sell`);
 
       const unitPrice = Number(product.sellingPrice);
       const lineTotal = unitPrice;
@@ -66,23 +68,33 @@ export async function importSales(
 
       const saleNumber = await nextSaleNumber();
 
-      const sale = await prisma.sale.create({
-        data: {
-          saleNumber,
-          customerId: customer.id,
-          status: 'DRAFT',
-          subtotal,
-          tax,
-          receivedAmount: 0,
-          total,
-          items: {
-            create: [{ productId: product.id, quantity: 1, unitPrice, lineTotal }],
+      // Mirrors sales.service.ts's createSale: an imported row commits
+      // straight to Sold, same as one entered through the form.
+      await prisma.$transaction(async (tx) => {
+        await tx.sale.create({
+          data: {
+            saleNumber,
+            customerId: customer.id,
+            status: 'SOLD',
+            subtotal,
+            tax,
+            receivedAmount: 0,
+            total,
+            soldAt: new Date(),
+            items: {
+              create: [{ productId: product.id, quantity: 1, unitPrice, lineTotal }],
+            },
           },
-        },
+        });
+
+        for (const op of deductStockInTransaction(tx, product.id, 1, `Sale ${saleNumber}`)) {
+          await op;
+        }
+        await tx.product.update({ where: { id: product.id }, data: { status: 'SOLD' } });
       });
 
       createdCount++;
-      results.push({ row: rowNum, saleNumber: sale.saleNumber, status: 'created' });
+      results.push({ row: rowNum, saleNumber, status: 'created' });
     } catch (err) {
       errorCount++;
       results.push({

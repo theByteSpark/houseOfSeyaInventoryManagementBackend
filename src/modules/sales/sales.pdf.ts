@@ -28,7 +28,7 @@ export async function generateInvoicePdf(
   doc.fontSize(10).font('Helvetica').fillColor('#555');
   doc.text(`Status: ${sale.status}`);
   doc.text(`Created: ${sale.createdAt.toLocaleDateString('en-IN')}`);
-  if (sale.issuedAt) doc.text(`Issued: ${sale.issuedAt.toLocaleDateString('en-IN')}`);
+  if (sale.soldAt) doc.text(`Sold: ${sale.soldAt.toLocaleDateString('en-IN')}`);
   doc.moveDown(1);
 
   doc.fillColor('#000').fontSize(11).font('Helvetica-Bold').text('Billed to');

@@ -32,6 +32,10 @@ export function computeSaleTotals(subtotal: number, discountPercent?: number, di
   return { tax, discountValue, total };
 }
 
+function statusForPayment(receivedAmount: number, total: number): SaleStatus {
+  return receivedAmount >= total ? 'PAID' : 'SOLD';
+}
+
 function toDto(sale: SaleWithRelations) {
   const discountPercent = sale.discountPercent !== null ? Number(sale.discountPercent) : null;
   const discountAmount = sale.discountAmount !== null ? Number(sale.discountAmount) : null;
@@ -63,7 +67,7 @@ function toDto(sale: SaleWithRelations) {
     total,
     receivedAmount,
     balanceDue: Math.round((total - receivedAmount) * 100) / 100,
-    issuedAt: sale.issuedAt,
+    soldAt: sale.soldAt,
     createdAt: sale.createdAt,
   };
 }
@@ -140,6 +144,7 @@ export async function createSale(input: SaleInput) {
   const itemsData = input.items.map((line) => {
     const product = productById.get(line.productId);
     if (!product) throw ApiError.notFound(`Product ${line.productId} not found.`);
+    if (product.status !== 'ACTIVE') throw ApiError.badRequest(`${product.name} is not available to sell.`);
 
     const unitPrice = Number(product.sellingPrice);
     const lineTotal = Math.round(unitPrice * line.quantity * 100) / 100;
@@ -155,32 +160,46 @@ export async function createSale(input: SaleInput) {
 
   subtotal = Math.round(subtotal * 100) / 100;
   const { tax, total } = computeSaleTotals(subtotal, input.discountPercent, input.discountAmount);
-
+  const receivedAmount = input.receivedAmount ?? 0;
   const saleNumber = await nextSaleNumber();
 
-  const sale = await prisma.sale.create({
-    data: {
-      saleNumber,
-      customerId: customer.id,
-      status: 'DRAFT',
-      subtotal,
-      tax,
-      discountPercent: input.discountPercent ?? null,
-      discountAmount: input.discountAmount ?? null,
-      receivedAmount: input.receivedAmount ?? 0,
-      total,
-      items: { create: itemsData },
-    },
-    include: SALE_INCLUDE,
-  });
+  const saleId = await prisma.$transaction(
+    async (tx) => {
+      const created = await tx.sale.create({
+        data: {
+          saleNumber,
+          customerId: customer.id,
+          status: statusForPayment(receivedAmount, total),
+          subtotal,
+          tax,
+          discountPercent: input.discountPercent ?? null,
+          discountAmount: input.discountAmount ?? null,
+          receivedAmount,
+          total,
+          soldAt: new Date(),
+          items: { create: itemsData },
+        },
+      });
 
-  return toDto(sale);
+      for (const line of input.items) {
+        for (const op of deductStockInTransaction(tx, line.productId, line.quantity, `Sale ${saleNumber}`)) {
+          await op;
+        }
+        await tx.product.update({ where: { id: line.productId }, data: { status: 'SOLD' } });
+      }
+
+      return created.id;
+    },
+    { timeout: 15000, maxWait: 15000 },
+  );
+
+  return getSale(saleId);
 }
 
 export async function updateSale(id: string, input: SaleInput) {
-  const existing = await prisma.sale.findUnique({ where: { id } });
+  const existing = await prisma.sale.findUnique({ where: { id }, include: { items: true } });
   if (!existing) throw ApiError.notFound('Sale not found.');
-  if (existing.status !== 'DRAFT') throw ApiError.badRequest('Only draft sales can be edited.');
+  if (existing.status === 'CANCELLED') throw ApiError.badRequest('A cancelled sale cannot be edited.');
 
   const customer = await prisma.customer.findUnique({ where: { id: input.customerId } });
   if (!customer) throw ApiError.notFound('Customer not found.');
@@ -189,10 +208,19 @@ export async function updateSale(id: string, input: SaleInput) {
   const products = await prisma.product.findMany({ where: { id: { in: productIds } } });
   const productById = new Map(products.map((p) => [p.id, p]));
 
+  const oldItemByProductId = new Map(existing.items.map((item) => [item.productId, item]));
+  const newProductIds = new Set(productIds);
+
   let subtotal = 0;
   const itemsData = input.items.map((line) => {
     const product = productById.get(line.productId);
     if (!product) throw ApiError.notFound(`Product ${line.productId} not found.`);
+
+    // A line already on this sale is expected to be SOLD (by this sale) —
+    // only a newly-added line needs to currently be sellable.
+    if (!oldItemByProductId.has(line.productId) && product.status !== 'ACTIVE') {
+      throw ApiError.badRequest(`${product.name} is not available to sell.`);
+    }
 
     const unitPrice = Number(product.sellingPrice);
     const lineTotal = Math.round(unitPrice * line.quantity * 100) / 100;
@@ -208,9 +236,36 @@ export async function updateSale(id: string, input: SaleInput) {
 
   subtotal = Math.round(subtotal * 100) / 100;
   const { tax, total } = computeSaleTotals(subtotal, input.discountPercent, input.discountAmount);
+  const receivedAmount = input.receivedAmount ?? 0;
+
+  const removedItems = [...oldItemByProductId.values()].filter((item) => !newProductIds.has(item.productId));
+  const addedProductIds = productIds.filter((pid) => !oldItemByProductId.has(pid));
 
   await prisma.$transaction(
     async (tx) => {
+      for (const item of removedItems) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { status: 'ACTIVE', quantityInStock: { increment: item.quantity } },
+        });
+        await tx.stockMovement.create({
+          data: {
+            productId: item.productId,
+            type: 'ADJUSTMENT',
+            quantity: item.quantity,
+            reason: `Removed from ${existing.saleNumber}`,
+          },
+        });
+      }
+
+      for (const pid of addedProductIds) {
+        const line = input.items.find((l) => l.productId === pid)!;
+        for (const op of deductStockInTransaction(tx, pid, line.quantity, `Sale ${existing.saleNumber}`)) {
+          await op;
+        }
+        await tx.product.update({ where: { id: pid }, data: { status: 'SOLD' } });
+      }
+
       await tx.saleItem.deleteMany({ where: { saleId: id } });
       await tx.sale.update({
         where: { id },
@@ -220,8 +275,9 @@ export async function updateSale(id: string, input: SaleInput) {
           tax,
           discountPercent: input.discountPercent ?? null,
           discountAmount: input.discountAmount ?? null,
-          receivedAmount: input.receivedAmount ?? 0,
+          receivedAmount,
           total,
+          status: statusForPayment(receivedAmount, total),
           items: { create: itemsData },
         },
       });
@@ -232,74 +288,48 @@ export async function updateSale(id: string, input: SaleInput) {
   return getSale(id);
 }
 
-async function transitionSale(id: string, status: SaleStatus) {
-  const sale = await prisma.sale.findUnique({ where: { id }, include: SALE_INCLUDE });
+export async function markSalePaid(id: string) {
+  const sale = await prisma.sale.findUnique({ where: { id } });
   if (!sale) throw ApiError.notFound('Sale not found.');
-
-  if (status === 'ISSUED') {
-    if (sale.status !== 'DRAFT') throw ApiError.badRequest('Only draft sales can be issued.');
-
-    const productIds = sale.items.map((item) => item.productId);
-    const products = await prisma.product.findMany({ where: { id: { in: productIds } } });
-    const productById = new Map(products.map((p) => [p.id, p]));
-
-    for (const item of sale.items) {
-      const product = productById.get(item.productId);
-      if (!product || product.status !== 'ACTIVE') {
-        throw ApiError.badRequest(`${item.product.name} is not available to sell.`);
-      }
-    }
-
-    // Fully paid before/at issue (a deposit that already covers the total)
-    // goes straight to PAID instead of stopping at ISSUED.
-    const resultingStatus: SaleStatus = Number(sale.receivedAmount) >= Number(sale.total) ? 'PAID' : 'ISSUED';
-
-    await prisma.$transaction(
-      async (tx) => {
-        for (const item of sale.items) {
-          for (const op of deductStockInTransaction(tx, item.productId, item.quantity, `Sale ${sale.saleNumber}`)) {
-            await op;
-          }
-          await tx.product.update({ where: { id: item.productId }, data: { status: 'SOLD' } });
-        }
-        await tx.sale.update({
-          where: { id },
-          data: { status: resultingStatus, issuedAt: new Date() },
-        });
-      },
-      { timeout: 15000, maxWait: 15000 },
-    );
-
-    return getSale(id);
-  }
-
-  if (status === 'CANCELLED' && sale.status === 'PAID') {
-    throw ApiError.badRequest('A paid sale cannot be cancelled.');
-  }
-
-  if (status === 'PAID' && sale.status !== 'ISSUED') {
-    throw ApiError.badRequest('Only issued sales can be marked as paid.');
-  }
+  if (sale.status !== 'SOLD') throw ApiError.badRequest('Only sold sales can be marked as paid.');
 
   const updated = await prisma.sale.update({
     where: { id },
-    data: { status },
+    data: { status: 'PAID' },
     include: SALE_INCLUDE,
   });
 
   return toDto(updated);
 }
 
-export async function issueSale(id: string) {
-  return transitionSale(id, 'ISSUED');
-}
-
-export async function markSalePaid(id: string) {
-  return transitionSale(id, 'PAID');
-}
-
 export async function cancelSale(id: string) {
-  return transitionSale(id, 'CANCELLED');
+  const sale = await prisma.sale.findUnique({ where: { id }, include: { items: true } });
+  if (!sale) throw ApiError.notFound('Sale not found.');
+  if (sale.status === 'CANCELLED') throw ApiError.badRequest('Sale is already cancelled.');
+
+  await prisma.$transaction(
+    async (tx) => {
+      for (const item of sale.items) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { status: 'ACTIVE', quantityInStock: { increment: item.quantity } },
+        });
+        await tx.stockMovement.create({
+          data: {
+            productId: item.productId,
+            type: 'ADJUSTMENT',
+            quantity: item.quantity,
+            reason: `Sale ${sale.saleNumber} cancelled`,
+          },
+        });
+      }
+
+      await tx.sale.update({ where: { id }, data: { status: 'CANCELLED' } });
+    },
+    { timeout: 15000, maxWait: 15000 },
+  );
+
+  return getSale(id);
 }
 
 export async function getSaleForInvoice(id: string) {
