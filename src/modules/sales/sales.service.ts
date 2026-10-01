@@ -2,7 +2,7 @@ import type { SaleStatus, Prisma } from '@prisma/client';
 import { prisma } from '@/config/db';
 import { ApiError } from '@/utils/apiError';
 import type { PaginatedResult, PaginationParams } from '@/utils/pagination';
-import { deductStockInTransaction } from '@/modules/inventory/inventory.service';
+import { deductStockInTransaction, PRODUCT_INCLUDE, toProductDto } from '@/modules/inventory/inventory.service';
 import type { SaleInput } from './sales.validation';
 
 export const TAX_RATE = 0.03;
@@ -11,7 +11,10 @@ const SALE_INCLUDE = {
   customer: { select: { name: true, email: true, phone: true, address: true } },
   items: {
     include: {
-      product: { select: { name: true, designNumber: true, subcategory: { select: { name: true } } } },
+      // Full cost-sheet DTO — the Sale detail page shows the same
+      // metal/diamond/labour cost breakdown the Sale form shows while
+      // selecting the product, not just its name.
+      product: { include: PRODUCT_INCLUDE },
     },
   },
 } satisfies Prisma.SaleInclude;
@@ -55,6 +58,7 @@ function toDto(sale: SaleWithRelations) {
       productName: item.product.name,
       designNumber: item.product.designNumber,
       subcategoryName: item.product.subcategory?.name ?? null,
+      product: toProductDto(item.product),
       quantity: item.quantity,
       unitPrice: Number(item.unitPrice),
       lineTotal: Number(item.lineTotal),
