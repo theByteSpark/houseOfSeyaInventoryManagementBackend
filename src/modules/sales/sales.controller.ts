@@ -16,7 +16,14 @@ export async function listSalesHandler(req: Request, res: Response) {
 
   const params = parsePaginationParams(req, SALE_SORTABLE_FIELDS);
   const rawStatus = typeof req.query.status === 'string' ? req.query.status.toUpperCase() : 'ALL';
-  const statusFilter = SALE_STATUSES.includes(rawStatus as SaleStatus) ? (rawStatus as SaleStatus) : 'ALL';
+  // PARTIALLY_PAID isn't a real SaleStatus value (see sales.service.ts's
+  // listSalesPaginated) -- it has to be special-cased here too, same as
+  // reports.service.ts's getSalesReport, or it falls through to "ALL" and
+  // silently filters nothing.
+  const statusFilter =
+    rawStatus === 'PARTIALLY_PAID' || SALE_STATUSES.includes(rawStatus as SaleStatus)
+      ? (rawStatus as SaleStatus | 'PARTIALLY_PAID')
+      : 'ALL';
   res.json(await salesService.listSalesPaginated(params, statusFilter));
 }
 

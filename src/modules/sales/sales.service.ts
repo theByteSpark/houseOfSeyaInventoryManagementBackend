@@ -108,7 +108,7 @@ export async function listSales() {
 
 export async function listSalesPaginated(
   params: PaginationParams,
-  statusFilter: SaleStatus | 'ALL',
+  statusFilter: SaleStatus | 'PARTIALLY_PAID' | 'ALL',
 ): Promise<PaginatedResult<ReturnType<typeof toDto>>> {
   const { page, pageSize, search, sortBy, sortDir } = params;
 
@@ -122,8 +122,15 @@ export async function listSalesPaginated(
       }
     : {};
 
+  // PARTIALLY_PAID isn't a real DB status (same derivation as
+  // reports.service.ts's getSalesReport) -- it's a Sold sale with some
+  // money already in.
   const where: Prisma.SaleWhereInput =
-    statusFilter === 'ALL' ? searchFilter : { AND: [searchFilter, { status: statusFilter }] };
+    statusFilter === 'ALL'
+      ? searchFilter
+      : statusFilter === 'PARTIALLY_PAID'
+        ? { AND: [searchFilter, { status: 'SOLD', receivedAmount: { gt: 0 } }] }
+        : { AND: [searchFilter, { status: statusFilter }] };
 
   const orderBy: Prisma.SaleOrderByWithRelationInput =
     sortBy === 'customer'
