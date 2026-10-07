@@ -96,6 +96,7 @@ export async function listProducts() {
 export async function listProductsPaginated(
   params: PaginationParams,
   subcategoryId?: string,
+  status?: ProductStatus,
 ): Promise<PaginatedResult<ReturnType<typeof toProductDto>>> {
   const { page, pageSize, search, sortBy, sortDir } = params;
 
@@ -110,9 +111,10 @@ export async function listProductsPaginated(
       }
     : {};
 
-  const where: Prisma.ProductWhereInput = subcategoryId
-    ? { AND: [searchFilter, { subcategoryId }] }
-    : searchFilter;
+  const filters: Prisma.ProductWhereInput[] = [searchFilter];
+  if (subcategoryId) filters.push({ subcategoryId });
+  if (status) filters.push({ status });
+  const where: Prisma.ProductWhereInput = filters.length > 1 ? { AND: filters } : filters[0];
 
   const orderBy: Prisma.ProductOrderByWithRelationInput =
     sortBy === 'subcategory'

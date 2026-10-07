@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import type { ProductStatus } from '@prisma/client';
 import { requireParam } from '@/utils/params';
 import { isPaginationRequested, parsePaginationParams } from '@/utils/pagination';
 import * as inventoryService from './inventory.service';
@@ -6,6 +7,7 @@ import * as inventoryService from './inventory.service';
 const PRODUCT_SORTABLE_FIELDS = ['name', 'designNumber', 'subcategory', 'sellingPrice', 'quantityInStock', 'createdAt'];
 const CATEGORY_SORTABLE_FIELDS = ['name', 'subcategoryCount'];
 const SUBCATEGORY_SORTABLE_FIELDS = ['name', 'category', 'productCount'];
+const PRODUCT_STATUSES: ProductStatus[] = ['ORDERED', 'ACTIVE', 'SOLD'];
 
 export async function listProductsHandler(req: Request, res: Response) {
   if (!isPaginationRequested(req)) {
@@ -15,7 +17,9 @@ export async function listProductsHandler(req: Request, res: Response) {
 
   const params = parsePaginationParams(req, PRODUCT_SORTABLE_FIELDS);
   const subcategoryId = typeof req.query.subcategoryId === 'string' ? req.query.subcategoryId : undefined;
-  res.json(await inventoryService.listProductsPaginated(params, subcategoryId));
+  const rawStatus = typeof req.query.status === 'string' ? req.query.status.toUpperCase() : undefined;
+  const status = rawStatus && PRODUCT_STATUSES.includes(rawStatus as ProductStatus) ? (rawStatus as ProductStatus) : undefined;
+  res.json(await inventoryService.listProductsPaginated(params, subcategoryId, status));
 }
 
 export async function getProductHandler(req: Request, res: Response) {
