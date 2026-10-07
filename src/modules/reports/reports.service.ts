@@ -29,16 +29,32 @@ function buildPurchaseDateFilter(fromDate?: Date, toDate?: Date): Prisma.Purchas
   return filter;
 }
 
+const REAL_SALE_STATUSES: SaleStatus[] = ['SOLD', 'PAID', 'CANCELLED'];
+
+// Partially paid isn't a real DB status (same as the frontend's
+// saleStatus.ts withEffectiveStatus) -- it's a Sold sale with some money
+// already in. Can't push that straight into a Prisma `status` filter, and
+// a plain `as SaleStatus` cast on an arbitrary query string would crash on
+// any value Prisma doesn't recognize (which is exactly what "PARTIALLY_PAID"
+// used to do here).
+function effectiveSaleStatus(status: SaleStatus, receivedAmount: number): SaleStatus | 'PARTIALLY_PAID' {
+  return status === 'SOLD' && receivedAmount > 0 ? 'PARTIALLY_PAID' : status;
+}
+
 export async function getSalesReport(from?: string, to?: string, status?: string) {
   const { fromDate, toDate } = parseDateRange(from, to);
   const dateFilter = buildSaleDateFilter(fromDate, toDate);
 
   const statusFilter: Prisma.SaleWhereInput =
-    status && status !== 'ALL' ? { status: status as SaleStatus } : {};
+    status === 'PARTIALLY_PAID'
+      ? { status: 'SOLD', receivedAmount: { gt: 0 } }
+      : status && REAL_SALE_STATUSES.includes(status as SaleStatus)
+        ? { status: status as SaleStatus }
+        : {};
 
   const where: Prisma.SaleWhereInput = { AND: [dateFilter, statusFilter] };
 
-  const [sales, totalCount, statusBreakdown, topProducts] = await Promise.all([
+  const [sales, totalCount, topProducts] = await Promise.all([
     prisma.sale.findMany({
       where,
       include: {
@@ -48,7 +64,6 @@ export async function getSalesReport(from?: string, to?: string, status?: string
       orderBy: { createdAt: 'desc' },
     }),
     prisma.sale.count({ where }),
-    prisma.sale.groupBy({ by: ['status'], where, _count: true }),
     prisma.saleItem.groupBy({
       by: ['productId'],
       where: { sale: where },
@@ -65,11 +80,17 @@ export async function getSalesReport(from?: string, to?: string, status?: string
   const totalRevenue = sales.reduce((sum, s) => sum + Number(s.total), 0);
   const totalTax = sales.reduce((sum, s) => sum + Number(s.tax), 0);
 
+  const statusBreakdownMap = new Map<string, number>();
+  for (const s of sales) {
+    const effective = effectiveSaleStatus(s.status, Number(s.receivedAmount));
+    statusBreakdownMap.set(effective, (statusBreakdownMap.get(effective) ?? 0) + 1);
+  }
+
   return {
     totalCount,
     totalRevenue,
     totalTax,
-    statusBreakdown: statusBreakdown.map((s) => ({ status: s.status, count: s._count })),
+    statusBreakdown: [...statusBreakdownMap.entries()].map(([status, count]) => ({ status, count })),
     topProducts: topProducts.map((p) => ({
       product: productMap.get(p.productId)?.name ?? 'Unknown',
       designNumber: productMap.get(p.productId)?.designNumber ?? '',
@@ -80,7 +101,7 @@ export async function getSalesReport(from?: string, to?: string, status?: string
       id: s.id,
       saleNumber: s.saleNumber,
       customerName: s.customer.name,
-      status: s.status,
+      status: effectiveSaleStatus(s.status, Number(s.receivedAmount)),
       total: Number(s.total),
       createdAt: s.createdAt,
     })),
