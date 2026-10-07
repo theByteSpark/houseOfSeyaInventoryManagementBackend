@@ -266,7 +266,7 @@ export async function updatePurchase(id: string, input: PurchaseInput) {
 export async function receivePurchase(id: string) {
   const purchase = await prisma.purchase.findUnique({
     where: { id },
-    include: { items: true },
+    include: { items: { include: { product: true } } },
   });
   if (!purchase) throw ApiError.notFound('Purchase not found.');
   if (purchase.status !== 'ORDERED') throw ApiError.badRequest('Only ordered purchases can be received.');
@@ -283,7 +283,13 @@ export async function receivePurchase(id: string) {
         });
         await tx.product.update({
           where: { id: item.productId },
-          data: { quantityInStock: { increment: remaining }, status: 'ACTIVE' },
+          data: {
+            quantityInStock: { increment: remaining },
+            // A product already sold while still on order (backorder sale)
+            // stays Sold -- it was never available to re-sell in the first
+            // place, so arriving shouldn't flip it back to Active.
+            ...(item.product.status === 'SOLD' ? {} : { status: 'ACTIVE' }),
+          },
         });
         await tx.stockMovement.create({
           data: {
