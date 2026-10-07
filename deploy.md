@@ -26,12 +26,12 @@ rsync -av \
 ## 3. On the VPS
 
 ```bash
-cd /opt/paragonresin/backend
+cd /opt/houseofseya_inventory/backend
 
 npm install --omit=dev
 npx prisma generate
 npx prisma migrate deploy
-pm2 restart paragon-api
+pm2 restart houseofseya_inventory-api
 ```
 
 ## 4. Verify
