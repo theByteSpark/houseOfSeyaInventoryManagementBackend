@@ -72,8 +72,24 @@ function toDto(sale: SaleWithRelations) {
     receivedAmount,
     balanceDue: Math.round((total - receivedAmount) * 100) / 100,
     soldAt: sale.soldAt,
+    paidAt: sale.paidAt,
     createdAt: sale.createdAt,
   };
+}
+
+// A product on a purchase that hasn't been received yet can still be sold
+// (billed in advance, on backorder) -- so Sale accepts ACTIVE or ORDERED,
+// never SOLD (already committed elsewhere). Only an ACTIVE product has real
+// stock to deduct; an ORDERED one has none yet, so nothing is decremented
+// for it until its purchase is eventually received (see receivePurchase's
+// own "don't downgrade an already-sold product" guard).
+async function fetchReceivedMap(
+  client: Pick<Prisma.TransactionClient, 'purchaseItem'> | typeof prisma,
+  productIds: string[],
+): Promise<Map<string, boolean>> {
+  if (productIds.length === 0) return new Map();
+  const items = await client.purchaseItem.findMany({ where: { productId: { in: productIds } } });
+  return new Map(items.map((item) => [item.productId, item.receivedQuantity >= item.quantity]));
 }
 
 export async function nextSaleNumber(): Promise<string> {
@@ -148,7 +164,9 @@ export async function createSale(input: SaleInput) {
   const itemsData = input.items.map((line) => {
     const product = productById.get(line.productId);
     if (!product) throw ApiError.notFound(`Product ${line.productId} not found.`);
-    if (product.status !== 'ACTIVE') throw ApiError.badRequest(`${product.name} is not available to sell.`);
+    if (product.status !== 'ACTIVE' && product.status !== 'ORDERED') {
+      throw ApiError.badRequest(`${product.name} is not available to sell.`);
+    }
 
     const unitPrice = Number(product.sellingPrice);
     const lineTotal = Math.round(unitPrice * line.quantity * 100) / 100;
@@ -165,6 +183,8 @@ export async function createSale(input: SaleInput) {
   subtotal = Math.round(subtotal * 100) / 100;
   const { tax, total } = computeSaleTotals(subtotal, input.discountPercent, input.discountAmount);
   const receivedAmount = input.receivedAmount ?? 0;
+  const resultingStatus = statusForPayment(receivedAmount, total);
+  const now = new Date();
   const saleNumber = await nextSaleNumber();
 
   const saleId = await prisma.$transaction(
@@ -173,21 +193,25 @@ export async function createSale(input: SaleInput) {
         data: {
           saleNumber,
           customerId: customer.id,
-          status: statusForPayment(receivedAmount, total),
+          status: resultingStatus,
           subtotal,
           tax,
           discountPercent: input.discountPercent ?? null,
           discountAmount: input.discountAmount ?? null,
           receivedAmount,
           total,
-          soldAt: new Date(),
+          soldAt: now,
+          paidAt: resultingStatus === 'PAID' ? now : null,
           items: { create: itemsData },
         },
       });
 
       for (const line of input.items) {
-        for (const op of deductStockInTransaction(tx, line.productId, line.quantity, `Sale ${saleNumber}`)) {
-          await op;
+        const product = productById.get(line.productId)!;
+        if (product.status === 'ACTIVE') {
+          for (const op of deductStockInTransaction(tx, line.productId, line.quantity, `Sale ${saleNumber}`)) {
+            await op;
+          }
         }
         await tx.product.update({ where: { id: line.productId }, data: { status: 'SOLD' } });
       }
@@ -222,7 +246,7 @@ export async function updateSale(id: string, input: SaleInput) {
 
     // A line already on this sale is expected to be SOLD (by this sale) —
     // only a newly-added line needs to currently be sellable.
-    if (!oldItemByProductId.has(line.productId) && product.status !== 'ACTIVE') {
+    if (!oldItemByProductId.has(line.productId) && product.status !== 'ACTIVE' && product.status !== 'ORDERED') {
       throw ApiError.badRequest(`${product.name} is not available to sell.`);
     }
 
@@ -241,31 +265,47 @@ export async function updateSale(id: string, input: SaleInput) {
   subtotal = Math.round(subtotal * 100) / 100;
   const { tax, total } = computeSaleTotals(subtotal, input.discountPercent, input.discountAmount);
   const receivedAmount = input.receivedAmount ?? 0;
+  const resultingStatus = statusForPayment(receivedAmount, total);
+  const paidAt = resultingStatus === 'PAID' ? (existing.status === 'PAID' ? existing.paidAt : new Date()) : null;
 
   const removedItems = [...oldItemByProductId.values()].filter((item) => !newProductIds.has(item.productId));
   const addedProductIds = productIds.filter((pid) => !oldItemByProductId.has(pid));
 
+  // A removed line's product only reverts to Active+stock if it was
+  // actually received from the vendor already — one sold while still
+  // Ordered (on backorder) never had stock to give back, so it goes back
+  // to Ordered instead.
+  const receivedMap = await fetchReceivedMap(prisma, removedItems.map((item) => item.productId));
+
   await prisma.$transaction(
     async (tx) => {
       for (const item of removedItems) {
-        await tx.product.update({
-          where: { id: item.productId },
-          data: { status: 'ACTIVE', quantityInStock: { increment: item.quantity } },
-        });
-        await tx.stockMovement.create({
-          data: {
-            productId: item.productId,
-            type: 'ADJUSTMENT',
-            quantity: item.quantity,
-            reason: `Removed from ${existing.saleNumber}`,
-          },
-        });
+        const wasReceived = receivedMap.get(item.productId) ?? false;
+        if (wasReceived) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: { status: 'ACTIVE', quantityInStock: { increment: item.quantity } },
+          });
+          await tx.stockMovement.create({
+            data: {
+              productId: item.productId,
+              type: 'ADJUSTMENT',
+              quantity: item.quantity,
+              reason: `Removed from ${existing.saleNumber}`,
+            },
+          });
+        } else {
+          await tx.product.update({ where: { id: item.productId }, data: { status: 'ORDERED' } });
+        }
       }
 
       for (const pid of addedProductIds) {
         const line = input.items.find((l) => l.productId === pid)!;
-        for (const op of deductStockInTransaction(tx, pid, line.quantity, `Sale ${existing.saleNumber}`)) {
-          await op;
+        const product = productById.get(pid)!;
+        if (product.status === 'ACTIVE') {
+          for (const op of deductStockInTransaction(tx, pid, line.quantity, `Sale ${existing.saleNumber}`)) {
+            await op;
+          }
         }
         await tx.product.update({ where: { id: pid }, data: { status: 'SOLD' } });
       }
@@ -281,7 +321,8 @@ export async function updateSale(id: string, input: SaleInput) {
           discountAmount: input.discountAmount ?? null,
           receivedAmount,
           total,
-          status: statusForPayment(receivedAmount, total),
+          status: resultingStatus,
+          paidAt,
           items: { create: itemsData },
         },
       });
@@ -299,7 +340,7 @@ export async function markSalePaid(id: string) {
 
   const updated = await prisma.sale.update({
     where: { id },
-    data: { status: 'PAID' },
+    data: { status: 'PAID', paidAt: new Date() },
     include: SALE_INCLUDE,
   });
 
@@ -311,21 +352,31 @@ export async function cancelSale(id: string) {
   if (!sale) throw ApiError.notFound('Sale not found.');
   if (sale.status === 'CANCELLED') throw ApiError.badRequest('Sale is already cancelled.');
 
+  // Same as updateSale's removed-line reconciliation: only revert to
+  // Active+stock if the product was actually received; one sold while
+  // still Ordered (on backorder) goes back to Ordered instead.
+  const receivedMap = await fetchReceivedMap(prisma, sale.items.map((item) => item.productId));
+
   await prisma.$transaction(
     async (tx) => {
       for (const item of sale.items) {
-        await tx.product.update({
-          where: { id: item.productId },
-          data: { status: 'ACTIVE', quantityInStock: { increment: item.quantity } },
-        });
-        await tx.stockMovement.create({
-          data: {
-            productId: item.productId,
-            type: 'ADJUSTMENT',
-            quantity: item.quantity,
-            reason: `Sale ${sale.saleNumber} cancelled`,
-          },
-        });
+        const wasReceived = receivedMap.get(item.productId) ?? false;
+        if (wasReceived) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: { status: 'ACTIVE', quantityInStock: { increment: item.quantity } },
+          });
+          await tx.stockMovement.create({
+            data: {
+              productId: item.productId,
+              type: 'ADJUSTMENT',
+              quantity: item.quantity,
+              reason: `Sale ${sale.saleNumber} cancelled`,
+            },
+          });
+        } else {
+          await tx.product.update({ where: { id: item.productId }, data: { status: 'ORDERED' } });
+        }
       }
 
       await tx.sale.update({ where: { id }, data: { status: 'CANCELLED' } });
