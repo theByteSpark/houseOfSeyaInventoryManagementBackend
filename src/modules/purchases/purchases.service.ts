@@ -114,6 +114,11 @@ export async function createPurchase(input: PurchaseInput) {
   const products = await prisma.product.findMany({ where: { id: { in: productIds } } });
   const productById = new Map(products.map((p) => [p.id, p]));
 
+  // By the time someone enters a purchase, the items have already arrived --
+  // it lands straight on Received (same reasoning as Sale committing
+  // straight to Sold), so there's no separate "mark as ordered" step to wait
+  // for. receivedQuantity/stock/product status are all set immediately,
+  // same as receivePurchase does for a legacy Ordered one.
   const itemsData = input.items.map((line) => {
     const product = productById.get(line.productId);
     if (!product) throw ApiError.notFound(`Product ${line.productId} not found.`);
@@ -122,34 +127,54 @@ export async function createPurchase(input: PurchaseInput) {
     return {
       productId: product.id,
       quantity: line.quantity,
-      receivedQuantity: 0,
+      receivedQuantity: line.quantity,
       unitCost: line.unitCost,
       lineTotal,
     };
   });
 
   const purchaseNumber = await nextPurchaseNumber();
+  const now = new Date();
 
-  const purchase = await prisma.purchase.create({
-    data: {
-      purchaseNumber,
-      vendorId: vendor.id,
-      status: 'ORDERED',
-      orderedAt: new Date(),
-      vendorInvoiceNumber: input.vendorInvoiceNumber || null,
-      vendorInvoiceDate: input.vendorInvoiceDate ? new Date(input.vendorInvoiceDate) : null,
-      items: { create: itemsData },
+  const purchase = await prisma.$transaction(
+    async (tx) => {
+      const created = await tx.purchase.create({
+        data: {
+          purchaseNumber,
+          vendorId: vendor.id,
+          status: 'RECEIVED',
+          orderedAt: now,
+          receivedAt: now,
+          vendorInvoiceNumber: input.vendorInvoiceNumber || null,
+          vendorInvoiceDate: input.vendorInvoiceDate ? new Date(input.vendorInvoiceDate) : null,
+          items: { create: itemsData },
+        },
+      });
+
+      for (const line of input.items) {
+        await tx.product.update({
+          where: { id: line.productId },
+          data: { quantityInStock: { increment: line.quantity }, status: 'ACTIVE' },
+        });
+        await tx.stockMovement.create({
+          data: { productId: line.productId, type: 'RESTOCK', quantity: line.quantity, reason: `PO ${purchaseNumber}` },
+        });
+      }
+
+      return created;
     },
-    include: PURCHASE_INCLUDE,
-  });
+    { timeout: 15000, maxWait: 15000 },
+  );
 
-  return toDto(purchase);
+  return getPurchase(purchase.id);
 }
 
 export async function updatePurchase(id: string, input: PurchaseInput) {
-  const existing = await prisma.purchase.findUnique({ where: { id } });
+  const existing = await prisma.purchase.findUnique({ where: { id }, include: { items: true } });
   if (!existing) throw ApiError.notFound('Purchase not found.');
-  if (existing.status !== 'ORDERED') throw ApiError.badRequest('Only ordered purchases can be edited.');
+  if (existing.status !== 'ORDERED' && existing.status !== 'RECEIVED') {
+    throw ApiError.badRequest('Only ordered or received purchases can be edited.');
+  }
 
   const vendor = await prisma.vendor.findUnique({ where: { id: input.vendorId } });
   if (!vendor) throw ApiError.notFound('Vendor not found.');
@@ -158,23 +183,70 @@ export async function updatePurchase(id: string, input: PurchaseInput) {
   const products = await prisma.product.findMany({ where: { id: { in: productIds } } });
   const productById = new Map(products.map((p) => [p.id, p]));
 
+  const wasReceived = existing.status === 'RECEIVED';
+  const oldItemByProductId = new Map(existing.items.map((item) => [item.productId, item]));
+  const newProductIds = new Set(productIds);
+
   const itemsData = input.items.map((line) => {
     const product = productById.get(line.productId);
     if (!product) throw ApiError.notFound(`Product ${line.productId} not found.`);
 
     const lineTotal = Math.round(line.unitCost * line.quantity * 100) / 100;
+    // A line already on this purchase keeps its existing receipt state; a
+    // newly-added line on an already-Received purchase is received
+    // immediately too, same as a fresh purchase.
+    const existingItem = oldItemByProductId.get(line.productId);
+    const receivedQuantity = existingItem ? existingItem.receivedQuantity : wasReceived ? line.quantity : 0;
+
     return {
       productId: product.id,
       quantity: line.quantity,
-      receivedQuantity: 0,
+      receivedQuantity,
       unitCost: line.unitCost,
       lineTotal,
     };
   });
 
+  const removedItems = [...oldItemByProductId.values()].filter((item) => !newProductIds.has(item.productId));
+  const addedProductIds = wasReceived ? productIds.filter((pid) => !oldItemByProductId.has(pid)) : [];
+
+  if (wasReceived && removedItems.length > 0) {
+    const removedProducts = await prisma.product.findMany({
+      where: { id: { in: removedItems.map((item) => item.productId) } },
+      include: { _count: { select: { saleItems: true } } },
+    });
+    const alreadySold = removedProducts.find((p) => p._count.saleItems > 0);
+    if (alreadySold) {
+      throw ApiError.badRequest(`Cannot remove ${alreadySold.name} — it has already been sold.`);
+    }
+  }
+
   await prisma.$transaction(
     async (tx) => {
       await tx.purchaseItem.deleteMany({ where: { purchaseId: id } });
+
+      if (wasReceived) {
+        // A line dropped from an already-Received purchase only existed
+        // because of this purchase (one-of-a-kind, same reasoning as
+        // cancelPurchase's Received-cancel) -- remove it from Inventory
+        // entirely rather than leaving an orphaned product behind.
+        for (const item of removedItems) {
+          await tx.stockMovement.deleteMany({ where: { productId: item.productId } });
+          await tx.product.delete({ where: { id: item.productId } });
+        }
+
+        for (const pid of addedProductIds) {
+          const line = input.items.find((l) => l.productId === pid)!;
+          await tx.product.update({
+            where: { id: pid },
+            data: { quantityInStock: { increment: line.quantity }, status: 'ACTIVE' },
+          });
+          await tx.stockMovement.create({
+            data: { productId: pid, type: 'RESTOCK', quantity: line.quantity, reason: `PO ${existing.purchaseNumber}` },
+          });
+        }
+      }
+
       await tx.purchase.update({
         where: { id },
         data: {
