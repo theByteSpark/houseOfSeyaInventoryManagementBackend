@@ -182,7 +182,7 @@ export async function createSale(input: SaleInput) {
 
   subtotal = Math.round(subtotal * 100) / 100;
   const { tax, total } = computeSaleTotals(subtotal, input.discountPercent, input.discountAmount);
-  const receivedAmount = input.receivedAmount ?? 0;
+  const receivedAmount = input.receivedAmount;
   const resultingStatus = statusForPayment(receivedAmount, total);
   const now = new Date();
   const saleNumber = await nextSaleNumber();
@@ -264,7 +264,7 @@ export async function updateSale(id: string, input: SaleInput) {
 
   subtotal = Math.round(subtotal * 100) / 100;
   const { tax, total } = computeSaleTotals(subtotal, input.discountPercent, input.discountAmount);
-  const receivedAmount = input.receivedAmount ?? 0;
+  const receivedAmount = input.receivedAmount;
   const resultingStatus = statusForPayment(receivedAmount, total);
   const paidAt = resultingStatus === 'PAID' ? (existing.status === 'PAID' ? existing.paidAt : new Date()) : null;
 
