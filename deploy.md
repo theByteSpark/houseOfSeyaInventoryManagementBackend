@@ -26,12 +26,12 @@ rsync -av \
 ## 3. On the VPS
 
 ```bash
-cd /opt/houseofseya_inventory/backend
+cd /opt/bytespark_inventory/backend
 
 npm install --omit=dev
 npx prisma generate
 npx prisma migrate deploy
-pm2 restart houseofseya_inventory-api
+pm2 restart bytespark_inventory
 ```
 
 ## 4. Verify
