@@ -31,7 +31,7 @@ cd /opt/bytespark_inventory/backend
 npm install --omit=dev
 npx prisma generate
 npx prisma migrate deploy
-pm2 restart bytespark_inventory
+pm2 restart bytespark_inventory_api
 ```
 
 ## 4. Verify
