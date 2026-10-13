@@ -94,7 +94,7 @@ Read this as: an arrow's "many" side (`o{`) is the table holding the foreign key
 
 **Computed, not stored** (see `domains/inventory-and-stock.md` for the formulas): `metalCost`, `diamondCost`, `labourCost`, `totalCost`, `taxAmount`, `finalAmount`. These exist only in `inventory.service.ts`'s `toProductDto()` output, never as columns — recomputed from the raw inputs above every time a product is read.
 
-> **Not a child table.** A product has at most one diamond block (not a repeatable list), so its diamond fields sit directly on `Product` above rather than in a separate table — contrast with `Enquiry`/`EnquiryDiamond` below, where an enquiry genuinely can have several diamond wishes and so does use a child table. See `data-conventions.md` Rule 11 on when a repeatable child table earns its existence.
+> **Not a child table.** A product has at most one diamond block (not a repeatable list), so its diamond fields sit directly on `Product` above rather than in a separate table — same flattened shape `Enquiry` and `PurchaseEnquiry` below use for the same reason. See `data-conventions.md` Rule 11 on when a repeatable child table earns its existence.
 
 ### `AttributeOption` — Metal/Diamond-Shape/Diamond-Quality picklists
 
@@ -102,11 +102,11 @@ Read this as: an arrow's "many" side (`o{`) is the table holding the foreign key
 |---|---|---|
 | `id` | uuid, PK | |
 | `type` | `AttributeType` enum | `METAL` \| `DIAMOND_SHAPE` \| `DIAMOND_QUALITY` |
-| `label` | string | The exact string shown in the dropdown **and** the exact string saved onto `Product.metalType`/`diamondShape`/`diamondQuality` (or `EnquiryDiamond.shape`/`quality`) when picked |
+| `label` | string | The exact string shown in the dropdown **and** the exact string saved onto `Product.metalType`/`diamondShape`/`diamondQuality` (or the matching `Enquiry`/`PurchaseEnquiry` fields) when picked |
 | `sortOrder` | int, default 0 | Display order within a `type` |
 | `createdAt` | timestamp | |
 
-`@@unique([type, label])`. **No foreign key from `Product`/`EnquiryDiamond` into this table** — they copy the `label` string at entry time. This is deliberate: an admin can delete an option (e.g. retiring "Rose Gold") without that being a destructive operation for historical products — a deleted option only disappears from the picker for *new* entries, every product that already used it keeps showing that exact string forever. See `data-conventions.md` Rule 10 and the "Attribute Options" admin screen (`/settings/attributes` in the frontend) for how options are managed.
+`@@unique([type, label])`. **No foreign key from `Product`/`Enquiry`/`PurchaseEnquiry` into this table** — they copy the `label` string at entry time. This is deliberate: an admin can delete an option (e.g. retiring "Rose Gold") without that being a destructive operation for historical products — a deleted option only disappears from the picker for *new* entries, every product that already used it keeps showing that exact string forever. **Renaming is different**: `updateAttributeOption` propagates the new label onto every existing `Product`/`Enquiry`/`PurchaseEnquiry` row that had the old one (`attributeOptions.service.ts`), in the same transaction as the rename itself — a rename is meant to correct the record going forward, a delete is meant to retire an option without touching history. See `data-conventions.md` Rule 10 and the "Attribute Options" admin screen (`/settings/attributes` in the frontend) for how options are managed.
 
 ### `StockMovement` — append-only stock ledger
 
@@ -132,14 +132,24 @@ Never updated or deleted — it's a log. `quantityInStock` on `Product` is a run
 
 **Relationships:** has many `Sale` and `Enquiry`. The frontend-facing `totalSales` field is a computed `_count.sales`, not a stored column (see `customers.service.ts`). Unlike `Subcategory`, `deleteCustomer` does **not** guard against either relation — a pre-existing gap (a customer with sales already hits a raw, unhandled FK error on delete), not something the `Enquiry` addition introduced; not fixed here, out of scope.
 
-### `Enquiry` / `EnquiryDiamond` — recorded customer interest, no pricing
+### `Enquiry` — recorded customer interest, almost no pricing
 
-| Table | Key fields | Notes |
+| Field | Type | Notes |
 |---|---|---|
-| `Enquiry` | `id`, `customerId` (FK), `subcategoryId` (nullable FK), `metalType` (string, from the `METAL` `AttributeOption`s), `grossWeight` (`Decimal(10,3)`) | Deliberately has **no cost/price fields at all** — this is "what the customer asked about," not a costed item. Becomes a real `Product` later only if someone builds that cost sheet by hand; there's no automatic conversion. |
-| `EnquiryDiamond` | `id`, `enquiryId` (FK), `shape`, `quality` (both from the matching `AttributeOption` types), `pieces`, `caratWeight` (`Decimal(10,3)`) | Notably **lighter than `Product`'s diamond fields** — no `weight` reference field, no `rate`, no computed cost, since nothing here is being priced. Also, unlike `Product`, this genuinely is a child table — an enquiry can list several diamond wishes, replaced wholesale on update (`deleteMany` + nested `create`, same pattern `sales.service.ts`'s `updateSale` uses for `SaleItem`). |
+| `id`, `customerId` (FK), `subcategoryId` (nullable FK) | | |
+| `metalType` | string, from the `METAL` `AttributeOption`s | |
+| `grossWeight` | `Decimal(10,3)` | |
+| `diamondShape`, `diamondQuality`, `diamondPieces`, `diamondCaratWeight` | nullable | One flat diamond block, same shape as `Product`'s (not a repeatable child table — see the `AttributeOption` section above) |
+| `sellingAmount` | `Decimal(10,2)`, nullable in the DB but required by validation going forward | The one priced field here — the amount expected to be quoted, captured at registration so the Dashboard can show it without a real `Product`/`Sale` existing yet |
+| `notes` | string, nullable | Free text for anything the client said about a custom order that doesn't fit the structured fields |
 
-**Relationships:** `Customer` has many `Enquiry`; `Subcategory` has many `Enquiry` (nullable — an enquiry can be vague about subcategory); `Enquiry` has many `EnquiryDiamond`.
+Otherwise deliberately has **no cost-sheet fields** — this is "what the customer asked about," not a costed item. There's no stored link to the `Product`/`PurchaseEnquiry` it might become; the frontend's "Convert to Purchase Order" action only pre-fills a new form, it doesn't persist a connection (see `domains/enquiries.md`).
+
+### `PurchaseEnquiry` — the buying-side counterpart, vendor instead of customer
+
+Same shape as `Enquiry` minus `sellingAmount`/`notes`: `id`, `vendorId` (FK), `subcategoryId` (nullable FK), `metalType`, `grossWeight`, `diamondShape`/`diamondQuality`/`diamondPieces`/`diamondCaratWeight` (one flat block, diamond fields were flat from this table's creation — it never had a child-table phase the way `Enquiry` briefly did). Frontend-facing name is "Purchase Order," not "Purchase Enquiry" — the table/model name predates that rename and was left as-is rather than churning a migration for a display-only change.
+
+**Relationships:** `Customer` has many `Enquiry`; `Vendor` has many `PurchaseEnquiry`; `Subcategory` has many `Enquiry` and `PurchaseEnquiry` (both nullable — an enquiry can be vague about subcategory).
 
 ### `Sale` / `SaleItem` — invoicing
 
@@ -166,8 +176,8 @@ Never updated or deleted — it's a log. `quantityInStock` on `Product` is a run
 |---|---|---|
 | `Role` | `ADMIN`, `STAFF` | `User.role` |
 | `StockMovementType` | `RESTOCK`, `SALE`, `ADJUSTMENT` | `StockMovement.type` |
-| `SaleStatus` | `DRAFT`, `ISSUED`, `PAID`, `CANCELLED` | `Sale.status` |
-| `PurchaseStatus` | `DRAFT`, `ORDERED`, `PARTIALLY_RECEIVED`, `RECEIVED`, `CANCELLED` | `Purchase.status` |
+| `SaleStatus` | `SOLD`, `PAID`, `CANCELLED` (no `DRAFT`/`ISSUED` — a sale commits immediately; `Partially Paid` is a derived display label, not a 4th DB value, see `domains/sales-and-invoicing.md`) | `Sale.status` |
+| `PurchaseStatus` | `ORDERED`, `RECEIVED`, `CANCELLED` (no `DRAFT`/`PARTIALLY_RECEIVED` — a purchase commits immediately and receiving is one atomic step) | `Purchase.status` |
 | `AttributeType` | `METAL`, `DIAMOND_SHAPE`, `DIAMOND_QUALITY` | `AttributeOption.type` |
 
 ## Cross-Cutting Rules That Apply to Every Table
@@ -190,5 +200,9 @@ Never updated or deleted — it's a log. `quantityInStock` on `Product` is a run
 | `20260925090000_add_purchase_vendor_invoice_fields` | Added `Purchase.vendorInvoiceNumber`/`vendorInvoiceDate`, both nullable |
 | `20260925160000_add_enquiries` | Added `Enquiry`/`EnquiryDiamond` — a pricing-free record of customer interest |
 | `20260925180000_flatten_product_diamond` | Dropped `ProductDiamond`; added `diamondShape`/`diamondQuality`/`diamondPieces`/`diamondCaratWeight`/`diamondWeight`/`diamondRate` directly onto `Product` — a product has exactly one diamond block, not a repeatable list |
+| `20260930080000_flatten_enquiry_diamond` | Dropped `EnquiryDiamond`; added `diamondShape`/`diamondQuality`/`diamondPieces`/`diamondCaratWeight` directly onto `Enquiry`, same reasoning as the `Product` flatten above |
+| `20260930080100_add_purchase_enquiry` | Added `PurchaseEnquiry` — the buying-side counterpart to `Enquiry`, `Vendor` instead of `Customer`, diamond fields flat from the start |
+| `20260930090000_add_enquiry_selling_amount` | Added `Enquiry.sellingAmount`, nullable — the one priced field on an otherwise pricing-free record |
+| `20261013080000_add_enquiry_notes` | Added `Enquiry.notes`, nullable free text |
 
 When adding a table or relationship, add a row here in the same change (see `../GOLDEN_RULES.md` Rule 8) — this table is what makes "why does this table look this way" answerable in ten seconds instead of a `git log` archaeology session.

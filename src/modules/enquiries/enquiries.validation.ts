@@ -10,6 +10,7 @@ export const enquiryInputSchema = z.object({
   diamondPieces: z.coerce.number().int().positive().optional(),
   diamondCaratWeight: z.coerce.number().positive().optional(),
   sellingAmount: z.coerce.number().positive(),
+  notes: z.string().optional().or(z.literal('')),
 });
 
 export type EnquiryInput = z.infer<typeof enquiryInputSchema>;

@@ -3,6 +3,8 @@
 > **Purpose:** The `Sale` lifecycle, numbering, and how issuing a sale ties into stock — the rules a new sales-related feature has to respect.
 >
 > **Related docs:** `../database/schema-overview.md` (`Sale`/`SaleItem` tables) · `inventory-and-stock.md` (the stock side of issuing) · module: `src/modules/sales/`
+>
+> **Drift note:** this whole doc describes the old `DRAFT → ISSUED → PAID` lifecycle, which no longer exists. A sale now commits immediately to `SOLD` or `PAID` depending on `receivedAmount` (required, always > 0 — see `sales.validation.ts`); `PAID`/`SOLD` can both be edited or cancelled (admin-only) afterward, with stock/product-status reconciled based on whether each item was actually received; `Partially Paid` is a derived display label (`SOLD` + `receivedAmount > 0`), not a 4th `SaleStatus` value; a product can be sold while still `Ordered` (backorder billing); invoices render as a Credit Note until `PAID`. Needs a full rewrite, not a patch — not done here, out of scope for the change that added this note.
 
 ---
 

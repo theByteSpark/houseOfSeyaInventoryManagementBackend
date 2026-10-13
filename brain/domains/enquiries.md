@@ -8,7 +8,7 @@
 
 ## What This Is
 
-A record of what a customer is asking about — before any `Product` exists for it, and before there's any price to quote. A walk-in customer describing "gold, this subcategory, about this weight, with these kinds of diamonds" gets an `Enquiry` row, not a costed `Product`. There is **no automatic conversion** from an Enquiry into a Product or a Sale — if staff decide to actually build and cost that design, they create a real `Product` by hand via the inventory module; the Enquiry just stays as a record of the ask.
+A record of what a customer is asking about — before any `Product` exists for it, and before there's a real purchase committed to sourcing it. A walk-in customer describing "gold, this subcategory, about this weight, with these kinds of diamonds, roughly this selling amount, and here's what they said about the custom order" gets an `Enquiry` row, not a costed `Product`. There's no backend link between an Enquiry and the `Product`/`Purchase` it might become — if staff decide to actually source and cost that design, the frontend's **"Convert to Purchase Order"** action pre-fills a new `PurchaseEnquiry` with this Enquiry's subcategory/metal/diamond detail (no backend change, pure client-side form-to-form handoff — see `houseOfSeyaInventoryManagement`'s `EnquiriesListPage.tsx`/`DashboardPage.tsx`), but nothing is stored connecting the two records.
 
 ## Fields, By Design
 
@@ -18,10 +18,12 @@ A record of what a customer is asking about — before any `Product` exists for 
 | Subcategory | Yes, optional | What kind of piece — optional because a customer can be vague |
 | Metal type | Yes, required | From the same `AttributeOption` (`type: METAL`) picklist the product form uses |
 | Gross weight | Yes, required | Roughly how heavy |
-| Diamond shape/quality/pieces/carat weight | Yes, **repeatable (0+)** | What kind of stones, if any — genuinely a list here (a customer can ask about several stone types at once), unlike `Product`, which flattened its diamond fields onto one row since a design has exactly one diamond block (see `../database/data-conventions.md` Rule 11) |
-| Diamond `weight` (reference) / `rate` / computed cost | **No** | These exist on `Product`'s diamond fields because that model is being costed. Nothing here is priced, so there's nothing to compute. |
-| Metal rate / making charge / fixed expense / selling price | **No** | Same reason — an Enquiry is pre-costing. |
-| Status / lifecycle | **No, not yet** | Only plain CRUD today (list/create/edit/delete). A status (open/converted/closed) or an explicit link to the `Product` it turned into is a reasonable future addition but wasn't asked for — see `../GOLDEN_RULES.md` Rule 10 before adding one speculatively. |
+| Diamond shape/quality/pieces/carat weight | Yes, **one block, not repeatable** | Flattened onto the `Enquiry` row itself, same as `Product`'s diamond fields — a design has exactly one diamond block (see `../database/data-conventions.md` Rule 11) |
+| Selling amount | Yes, required | The amount expected to be quoted — captured at registration time so it shows on the Dashboard without waiting for a real `Product`/`Sale` to exist |
+| Notes | Yes, optional, free text | Anything the client said about a custom order that doesn't fit the structured fields above |
+| Diamond `weight` (reference) / `rate` / computed cost | **No** | These exist on `Product`'s diamond fields because that model is being costed. Nothing here is priced beyond the one `sellingAmount` figure. |
+| Metal rate / making charge / fixed expense | **No** | Same reason — an Enquiry is pre-costing. |
+| Status / lifecycle | **No, not yet** | Only plain CRUD today (list/create/edit/delete). A status (open/converted/closed) or an explicit link to the `Product`/`PurchaseEnquiry` it turned into is a reasonable future addition but wasn't asked for — see `../GOLDEN_RULES.md` Rule 10 before adding one speculatively. |
 
 ## Rules
 
@@ -29,10 +31,10 @@ A record of what a customer is asking about — before any `Product` exists for 
 |---|---|
 | Customer must exist | `createEnquiry`/`updateEnquiry` — `ApiError.notFound` if not |
 | Subcategory, if given, must exist | Same functions — checked only when `subcategoryId` is non-empty |
-| No `authorize()` gate | Recording an enquiry is normal staff work, same permission level as creating a `Customer` or a `Sale` — every route only requires `authenticate` |
-| Diamonds replaced wholesale on update | `updateEnquiry`: `deleteMany` + nested `create` in one `$transaction`, identical pattern to `SaleItem` |
+| Create/update/list/view need only `authenticate` | Recording an enquiry is normal staff work, same permission level as creating a `Customer` or a `Sale` |
+| Delete is admin-only | `DELETE /enquiries/:id` carries `authorize('ADMIN')` — deleting a record is treated like cancelling a Sale/Purchase, not like normal data entry |
 
 ## Extending This Domain
 
-- **Linking an Enquiry to the Product it became**: add a nullable `convertedProductId` FK on `Enquiry` (or the reverse, depending on which side should own the pointer), set it at the point staff create the matching `Product` — don't build this speculatively until it's actually asked for.
+- **Linking an Enquiry to the Product/PurchaseEnquiry it became**: add a nullable FK — set it at the point staff create the matching record, or when "Convert to Purchase Order" actually submits (today it only pre-fills a form, it doesn't persist a link). Don't build this speculatively until it's actually asked for.
 - **A status/lifecycle**: if added, follow the same enum-as-state-machine pattern `SaleStatus`/`PurchaseStatus` already establish (`../database/data-conventions.md` Rule 5) rather than inventing a different shape.

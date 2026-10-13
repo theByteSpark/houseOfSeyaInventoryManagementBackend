@@ -3,6 +3,8 @@
 > **Purpose:** The `Purchase` lifecycle, partial receiving, and how vendor stats are derived — the rules a new purchasing feature has to respect.
 >
 > **Related docs:** `../database/schema-overview.md` (`Vendor`/`Purchase`/`PurchaseItem` tables) · `inventory-and-stock.md` (stock side of receiving) · module: `src/modules/purchases/`, `src/modules/vendors/`
+>
+> **Drift note:** this whole doc describes the old `DRAFT → ORDERED → PARTIALLY_RECEIVED → RECEIVED` lifecycle, which no longer exists. A purchase now commits immediately to `ORDERED` with every item already marked received (stock/product status updated at creation, same as how a legacy `ORDERED` purchase is received); receiving is one atomic action (`receivePurchase`, no partial quantities); `ORDERED`/`RECEIVED` can both be edited or cancelled (admin-only) afterward — cancelling a `RECEIVED` purchase deletes the product(s) it created from Inventory entirely, blocked if already sold. Needs a full rewrite, not a patch — not done here, out of scope for the change that added this note.
 
 ---
 
