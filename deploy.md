@@ -31,7 +31,7 @@ cd /opt/houseofseya_inventory/backend
 npm install --omit=dev
 npx prisma generate
 npx prisma migrate deploy
-pm2 restart houseofseya_inventory-api
+pm2 restart houseofseya-inventory-api
 ```
 
 ## 4. Verify
