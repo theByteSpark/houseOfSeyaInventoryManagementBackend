@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { env } from '@/config/env';
+import { logger } from '@/utils/logger';
 import { errorHandler } from '@/middleware/errorHandler';
 import { authRoutes } from '@/modules/auth/auth.routes';
 import { usersRoutes } from '@/modules/users/users.routes';
@@ -22,13 +23,21 @@ const allowedOrigins = [
   env.CORS_ORIGIN,
   ...(env.CORS_ORIGINS ? env.CORS_ORIGINS.split(',').map((o) => o.trim()) : []),
 ];
+logger.info(`CORS allowlist loaded: ${JSON.stringify(allowedOrigins)}`);
+
+app.use((req, _res, next) => {
+  logger.info(`${req.method} ${req.originalUrl} | Origin: ${req.headers.origin ?? '(none)'}`);
+  next();
+});
 
 app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+        logger.info(`CORS allowed: ${origin ?? '(no origin header)'}`);
         callback(null, true);
       } else {
+        logger.warn(`CORS rejected: "${origin}" not in allowlist ${JSON.stringify(allowedOrigins)}`);
         callback(new Error(`Origin ${origin} not allowed by CORS`));
       }
     },
