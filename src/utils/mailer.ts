@@ -1,11 +1,12 @@
 import { Resend } from 'resend';
 import { env } from '@/config/env';
+import { logger } from '@/utils/logger';
 
 const resend = env.RESEND_API_KEY ? new Resend(env.RESEND_API_KEY) : null;
 
 export async function sendPasswordResetEmail(to: string, code: string): Promise<void> {
   if (!resend) {
-    console.warn(`[mailer] RESEND_API_KEY not configured. Password reset code for ${to}: ${code}`);
+    logger.warn(`[mailer] RESEND_API_KEY not configured. Password reset code for ${to}: ${code}`);
     return;
   }
 
