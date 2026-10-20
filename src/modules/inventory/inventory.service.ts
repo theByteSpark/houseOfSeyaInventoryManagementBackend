@@ -4,6 +4,7 @@ import { ApiError } from '@/utils/apiError';
 import type { PaginatedResult, PaginationParams } from '@/utils/pagination';
 import type { AuthenticatedUser } from '@/middleware/authenticate';
 import { isCompanyLevel, requireWarehouseId } from '@/utils/warehouseScope';
+import { logger } from '@/utils/logger';
 import { createNotification } from '@/modules/notifications/notifications.service';
 import type { CategoryInput, ProductInput, RestockInput } from './inventory.validation';
 
@@ -48,7 +49,7 @@ export async function checkLowStock(productId: string, warehouseId: string) {
       metadata: { productId, warehouseId, quantity: stock.quantity, reorderLevel: threshold },
     });
   } catch (err) {
-    console.error('checkLowStock failed', err);
+    logger.error('checkLowStock failed', err);
   }
 }
 

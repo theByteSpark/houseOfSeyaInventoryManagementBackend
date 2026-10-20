@@ -4,6 +4,7 @@ import { ApiError } from '@/utils/apiError';
 import type { AuthenticatedUser } from '@/middleware/authenticate';
 import { isCompanyLevel } from '@/utils/warehouseScope';
 import { pushToUsers } from '@/modules/notifications/ws';
+import { logger } from '@/utils/logger';
 
 // A notification is visible to a user if it's company-wide (warehouseId null)
 // or scoped to their own warehouse. Company-level roles see everything.
@@ -154,6 +155,6 @@ export async function createNotification(input: {
   } catch (err) {
     // Real-time delivery is best-effort — the notification row already
     // exists, so the 30s poll picks it up regardless.
-    console.error('Failed to push notification over WebSocket', err);
+    logger.error('Failed to push notification over WebSocket', err);
   }
 }

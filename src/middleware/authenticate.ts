@@ -3,6 +3,7 @@ import type { Role } from '@prisma/client';
 import { prisma } from '@/config/db';
 import { ApiError } from '@/utils/apiError';
 import { verifyAccessToken } from '@/utils/jwt';
+import { logger } from '@/utils/logger';
 
 export interface AuthenticatedUser {
   id: string;
@@ -29,7 +30,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
   try {
     payload = verifyAccessToken(token);
   } catch (err) {
-    console.error('authenticate: token verification failed', err);
+    logger.error('authenticate: token verification failed', err);
     throw ApiError.unauthorized('Invalid or expired access token');
   }
 

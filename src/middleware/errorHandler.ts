@@ -3,6 +3,7 @@ import { ZodError } from 'zod';
 import multer from 'multer';
 import { Prisma } from '@prisma/client';
 import { ApiError } from '@/utils/apiError';
+import { logger } from '@/utils/logger';
 
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
   if (err instanceof ApiError) {
@@ -36,6 +37,6 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     }
   }
 
-  console.error(err);
+  logger.error(err);
   return res.status(500).json({ error: 'Internal server error' });
 }
