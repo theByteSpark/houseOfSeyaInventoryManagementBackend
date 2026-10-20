@@ -85,10 +85,13 @@ brain/
 ├── architecture/                cross-cutting patterns every module follows
 ├── database/                     the schema, its relationships, its conventions
 ├── domains/                       business rules per feature area
-└── playbooks/                       step-by-step build recipes
+├── playbooks/                       step-by-step build recipes
+└── deployment/                       VPS topology, deploy steps, and incident troubleshooting
 ```
 
 A new domain folder earns its existence once it has 2+ real files, or 1 file plus a named next one — not a guess that it might grow.
+
+`deployment/` is distinct from `playbooks/`: `playbooks/` covers building new things inside this codebase (e.g. a new module); `deployment/` covers operating the already-built system on the real production VPS — ports, pm2 process names, nginx sites, and what to check when a deploy or a live incident goes wrong.
 
 ---
 

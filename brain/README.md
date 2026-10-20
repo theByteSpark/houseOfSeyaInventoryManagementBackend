@@ -25,6 +25,8 @@ An Express + TypeScript + Prisma (PostgreSQL) REST API for House of Seya's inven
 | Understand the Sale lifecycle and invoicing | `domains/sales-and-invoicing.md` |
 | Understand the Purchase lifecycle and receiving stock | `domains/purchases-and-vendors.md` |
 | **Build a brand-new CRUD module end to end** | `playbooks/add-a-new-module.md` |
+| Know what's running on the production VPS, which ports/pm2 names/nginx sites belong to which app, and how to deploy | `deployment/vps-topology-and-deploy-steps.md` |
+| Diagnose a production incident (won't start, restart loop, CORS/500) | `deployment/troubleshooting-checklist.md` |
 
 ## The Map
 
@@ -44,6 +46,8 @@ An Express + TypeScript + Prisma (PostgreSQL) REST API for House of Seya's inven
 | `domains/enquiries.md` | `Enquiry`/`EnquiryDiamond` — recorded customer interest, deliberately with no pricing |
 | `domains/import-export.md` | CSV/Excel bulk import column contracts, matching rules, and the one-row-one-record limitation for Product/Customer/Vendor/Sale/Purchase |
 | `playbooks/add-a-new-module.md` | The exact steps to add a new resource: schema → migration → service → routes → wire into `app.ts` → frontend hookup pointer |
+| `deployment/vps-topology-and-deploy-steps.md` | Every app on the production VPS, its port/pm2 name/nginx site, and the routine deploy steps |
+| `deployment/troubleshooting-checklist.md` | Symptom → diagnosis → fix for production incidents, written from real incidents as they happened |
 
 ## Where We Stand
 
