@@ -40,3 +40,8 @@ export async function receivePurchaseHandler(req: Request, res: Response) {
 export async function cancelPurchaseHandler(req: Request, res: Response) {
   res.json(await purchasesService.cancelPurchase(requireParam(req, 'id')));
 }
+
+export async function deletePurchaseHandler(req: Request, res: Response) {
+  await purchasesService.deletePurchase(requireParam(req, 'id'));
+  res.status(204).send();
+}

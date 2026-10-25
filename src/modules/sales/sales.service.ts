@@ -394,6 +394,49 @@ export async function cancelSale(id: string) {
   return getSale(id);
 }
 
+// A hard delete, distinct from cancelSale — removes the row entirely
+// instead of marking it CANCELLED. Used for admin cleanup of mistaken or
+// test entries. Still reconciles stock first, same as cancelSale, unless
+// the sale is already CANCELLED (stock was already reverted then, so
+// reverting again would double-credit it).
+export async function deleteSale(id: string) {
+  const sale = await prisma.sale.findUnique({ where: { id }, include: { items: true } });
+  if (!sale) throw ApiError.notFound('Sale not found.');
+
+  const receivedMap =
+    sale.status === 'CANCELLED' ? new Map<string, boolean>() : await fetchReceivedMap(prisma, sale.items.map((item) => item.productId));
+
+  await prisma.$transaction(
+    async (tx) => {
+      if (sale.status !== 'CANCELLED') {
+        for (const item of sale.items) {
+          const wasReceived = receivedMap.get(item.productId) ?? false;
+          if (wasReceived) {
+            await tx.product.update({
+              where: { id: item.productId },
+              data: { status: 'ACTIVE', quantityInStock: { increment: item.quantity } },
+            });
+            await tx.stockMovement.create({
+              data: {
+                productId: item.productId,
+                type: 'ADJUSTMENT',
+                quantity: item.quantity,
+                reason: `Sale ${sale.saleNumber} deleted`,
+              },
+            });
+          } else {
+            await tx.product.update({ where: { id: item.productId }, data: { status: 'ORDERED' } });
+          }
+        }
+      }
+
+      await tx.saleItem.deleteMany({ where: { saleId: id } });
+      await tx.sale.delete({ where: { id } });
+    },
+    { timeout: 15000, maxWait: 15000 },
+  );
+}
+
 export async function getSaleForInvoice(id: string) {
   const sale = await prisma.sale.findUnique({ where: { id }, include: SALE_INCLUDE });
   if (!sale) throw ApiError.notFound('Sale not found.');

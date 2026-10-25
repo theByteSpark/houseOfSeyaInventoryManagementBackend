@@ -47,6 +47,11 @@ export async function cancelSaleHandler(req: Request, res: Response) {
   res.json(await salesService.cancelSale(requireParam(req, 'id')));
 }
 
+export async function deleteSaleHandler(req: Request, res: Response) {
+  await salesService.deleteSale(requireParam(req, 'id'));
+  res.status(204).send();
+}
+
 export async function getInvoicePdfHandler(req: Request, res: Response) {
   const id = requireParam(req, 'id');
   const { doc, saleNumber } = await generateInvoicePdf(id);

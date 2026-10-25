@@ -16,3 +16,4 @@ purchasesRoutes.post('/', validateBody(purchaseInputSchema), asyncHandler(purcha
 purchasesRoutes.patch('/:id', validateBody(purchaseInputSchema), asyncHandler(purchasesController.updatePurchaseHandler));
 purchasesRoutes.patch('/:id/receive', asyncHandler(purchasesController.receivePurchaseHandler));
 purchasesRoutes.patch('/:id/cancel', authorize('ADMIN'), asyncHandler(purchasesController.cancelPurchaseHandler));
+purchasesRoutes.delete('/:id', authorize('ADMIN'), asyncHandler(purchasesController.deletePurchaseHandler));

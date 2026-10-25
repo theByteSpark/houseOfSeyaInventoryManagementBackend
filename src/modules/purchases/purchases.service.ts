@@ -354,3 +354,39 @@ export async function cancelPurchase(id: string) {
 
   return getPurchase(id);
 }
+
+// A hard delete, distinct from cancelPurchase — removes the row entirely
+// instead of marking it CANCELLED. Used for admin cleanup of mistaken or
+// test entries. Every product on a purchase is one-of-a-kind to it
+// regardless of current status (ORDERED or RECEIVED) -- see the comment on
+// cancelPurchase above -- so it's always removed from Inventory too, guarded
+// by the same "not already sold" check. A purchase that was already
+// CANCELLED while RECEIVED has no items left by this point (cancelPurchase
+// already deleted them); this just cleans up the now-empty purchase row.
+export async function deletePurchase(id: string) {
+  const purchase = await prisma.purchase.findUnique({
+    where: { id },
+    include: {
+      items: { include: { product: { include: { _count: { select: { saleItems: true } } } } } },
+    },
+  });
+  if (!purchase) throw ApiError.notFound('Purchase not found.');
+
+  const alreadySold = purchase.items.find((item) => item.product._count.saleItems > 0);
+  if (alreadySold) {
+    throw ApiError.badRequest(`Cannot delete — ${alreadySold.product.name} has already been sold.`);
+  }
+
+  await prisma.$transaction(
+    async (tx) => {
+      for (const item of purchase.items) {
+        await tx.stockMovement.deleteMany({ where: { productId: item.productId } });
+        await tx.purchaseItem.deleteMany({ where: { productId: item.productId } });
+        await tx.product.delete({ where: { id: item.productId } });
+      }
+
+      await tx.purchase.delete({ where: { id } });
+    },
+    { timeout: 15000, maxWait: 15000 },
+  );
+}
