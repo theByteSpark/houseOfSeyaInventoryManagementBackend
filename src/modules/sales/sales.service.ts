@@ -21,18 +21,21 @@ const SALE_INCLUDE = {
 
 type SaleWithRelations = Prisma.SaleGetPayload<{ include: typeof SALE_INCLUDE }>;
 
-// Selling price is tax-inclusive: tax is still computed and reported (the
-// Reports "tax collected" figure), but is never added on top of the
-// subtotal. Total is the subtotal minus whichever discount was given — the
+// Standard GST-invoice shape: Subtotal minus Discount gives the Taxable
+// Value; GST (split CGST/SGST on the invoice, combined here as `tax`) is
+// charged on top of that, never on the raw subtotal — a discounted sale
+// owes less tax, matching what the customer is actually being charged for.
+// `total` is the Grand Total / amount payable = Taxable Value + tax. The
 // two discount fields are mutually exclusive, enforced in sales.validation.ts.
 export function computeSaleTotals(subtotal: number, discountPercent?: number, discountAmount?: number) {
-  const tax = Math.round(subtotal * TAX_RATE * 100) / 100;
   const discountValue =
     discountPercent !== undefined
       ? Math.round(subtotal * (discountPercent / 100) * 100) / 100
       : Math.round(Math.min(discountAmount ?? 0, subtotal) * 100) / 100;
-  const total = Math.round((subtotal - discountValue) * 100) / 100;
-  return { tax, discountValue, total };
+  const taxableValue = Math.round((subtotal - discountValue) * 100) / 100;
+  const tax = Math.round(taxableValue * TAX_RATE * 100) / 100;
+  const total = Math.round((taxableValue + tax) * 100) / 100;
+  return { tax, discountValue, taxableValue, total };
 }
 
 function statusForPayment(receivedAmount: number, total: number): SaleStatus {
@@ -43,8 +46,13 @@ function toDto(sale: SaleWithRelations) {
   const discountPercent = sale.discountPercent !== null ? Number(sale.discountPercent) : null;
   const discountAmount = sale.discountAmount !== null ? Number(sale.discountAmount) : null;
   const subtotal = Number(sale.subtotal);
+  const tax = Number(sale.tax);
   const total = Number(sale.total);
   const receivedAmount = Number(sale.receivedAmount);
+  // Both are derived from the stored subtotal/tax/total -- no separate
+  // column needed. total = taxableValue + tax (see computeSaleTotals).
+  const taxableValue = Math.round((total - tax) * 100) / 100;
+  const discountValue = Math.round((subtotal - taxableValue) * 100) / 100;
 
   return {
     id: sale.id,
@@ -64,10 +72,11 @@ function toDto(sale: SaleWithRelations) {
       lineTotal: Number(item.lineTotal),
     })),
     subtotal,
-    tax: Number(sale.tax),
     discountPercent,
     discountAmount,
-    discountValue: Math.round((subtotal - total) * 100) / 100,
+    discountValue,
+    taxableValue,
+    tax,
     total,
     receivedAmount,
     balanceDue: Math.round((total - receivedAmount) * 100) / 100,

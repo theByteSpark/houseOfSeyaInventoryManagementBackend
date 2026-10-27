@@ -2,7 +2,7 @@ import { prisma } from '@/config/db';
 import { ApiError } from '@/utils/apiError';
 import { toCsv } from '@/utils/csv';
 import { buildExcelTemplate } from '@/utils/excel';
-import { nextSaleNumber, TAX_RATE } from '@/modules/sales/sales.service';
+import { computeSaleTotals, nextSaleNumber } from '@/modules/sales/sales.service';
 import { deductStockInTransaction } from '@/modules/inventory/inventory.service';
 
 // One row = one sale with exactly one line item — every product is one-of-a-
@@ -61,10 +61,10 @@ export async function importSales(
       const unitPrice = Number(product.sellingPrice);
       const lineTotal = unitPrice;
       const subtotal = lineTotal;
-      // Tax is tracked for reporting only — selling price is tax-inclusive,
-      // so it's never added into total (same as the Sale form/service).
-      const tax = Math.round(subtotal * TAX_RATE * 100) / 100;
-      const total = subtotal;
+      // Routed through the same computeSaleTotals() the form/service use —
+      // no discount on an imported row, so taxableValue === subtotal, but
+      // this guarantees the tax/total formula never drifts from createSale's.
+      const { tax, total } = computeSaleTotals(subtotal);
 
       const saleNumber = await nextSaleNumber();
 
