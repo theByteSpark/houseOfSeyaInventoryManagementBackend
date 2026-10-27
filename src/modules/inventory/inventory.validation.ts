@@ -12,6 +12,7 @@ export const productInputSchema = z.object({
 
 export const restockInputSchema = z.object({
   quantity: z.coerce.number().int().positive(),
+  direction: z.enum(['INCREASE', 'DECREASE']).default('INCREASE'),
   reason: z.string().optional(),
   warehouseId: z.string().optional(),
 });

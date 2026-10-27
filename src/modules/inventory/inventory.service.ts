@@ -285,20 +285,36 @@ export async function restockProduct(user: AuthenticatedUser, id: string, input:
   if (!product) throw ApiError.notFound('Product not found.');
 
   const warehouseId = requireWarehouseId(user, input.warehouseId);
+  const isDecrease = input.direction === 'DECREASE';
+
+  if (isDecrease) {
+    const stock = await prisma.productStock.findUnique({
+      where: { productId_warehouseId: { productId: id, warehouseId } },
+    });
+    const currentQuantity = stock?.quantity ?? 0;
+    if (input.quantity > currentQuantity) {
+      throw ApiError.badRequest(
+        `Cannot decrease by ${input.quantity} — only ${currentQuantity} in stock at this warehouse.`,
+      );
+    }
+  }
 
   await prisma.$transaction([
     prisma.productStock.upsert({
       where: { productId_warehouseId: { productId: id, warehouseId } },
-      update: { quantity: { increment: input.quantity } },
-      create: { productId: id, warehouseId, quantity: input.quantity },
+      update: { quantity: isDecrease ? { decrement: input.quantity } : { increment: input.quantity } },
+      // The create branch only runs when no ProductStock row exists yet --
+      // unreachable for a decrease, since the guard above already blocks any
+      // decrease against zero (nonexistent) stock.
+      create: { productId: id, warehouseId, quantity: isDecrease ? 0 : input.quantity },
     }),
     prisma.stockMovement.create({
       data: {
         productId: id,
         warehouseId,
-        type: 'RESTOCK',
+        type: isDecrease ? 'ADJUSTMENT' : 'RESTOCK',
         quantity: input.quantity,
-        reason: input.reason || 'Manual restock',
+        reason: input.reason || (isDecrease ? 'Manual stock decrease' : 'Manual restock'),
       },
     }),
   ]);
