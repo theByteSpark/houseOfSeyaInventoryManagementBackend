@@ -6,11 +6,21 @@ import { isCompanyLevel } from '@/utils/warehouseScope';
 import { pushToUsers } from '@/modules/notifications/ws';
 import { logger } from '@/utils/logger';
 
+// Warehouse Manager activity notifications tell Admin-tier roles what a
+// Warehouse Manager did -- they're never meant for Warehouse Manager's own
+// eyes (not even their own actions, and not a peer manager's at the same
+// warehouse). ADMIN ("Warehouse Admin") and up still see them normally.
+const ADMIN_ONLY_TYPES = ['ACTIVITY_CREATE', 'ACTIVITY_UPDATE', 'ACTIVITY_DELETE'] as const;
+
 // A notification is visible to a user if it's company-wide (warehouseId null)
 // or scoped to their own warehouse. Company-level roles see everything.
 function visibilityWhere(user: AuthenticatedUser): Prisma.NotificationWhereInput {
-  if (isCompanyLevel(user)) return {};
-  return { OR: [{ warehouseId: null }, { warehouseId: user.warehouseId ?? '__none__' }] };
+  const base: Prisma.NotificationWhereInput = isCompanyLevel(user)
+    ? {}
+    : { OR: [{ warehouseId: null }, { warehouseId: user.warehouseId ?? '__none__' }] };
+
+  if (user.role !== 'USER') return base;
+  return { AND: [base, { type: { notIn: [...ADMIN_ONLY_TYPES] } }] };
 }
 
 function toDto(
@@ -105,7 +115,9 @@ export async function markAllAsRead(user: AuthenticatedUser) {
 // Resolves which userIds should receive a notification scoped to the given
 // warehouse — mirrors visibilityWhere() above, just from the recipient side
 // instead of the viewer side. Null warehouseId = every user (company-wide).
-async function resolveRecipientIds(warehouseId: string | null): Promise<string[]> {
+async function resolveRecipientIds(warehouseId: string | null, type: NotificationType): Promise<string[]> {
+  const adminOnly = (ADMIN_ONLY_TYPES as readonly string[]).includes(type);
+
   const companyLevelUsers = await prisma.user.findMany({
     where: { role: { in: ['COMPANY_ADMIN', 'SUPER_ADMIN'] } },
     select: { id: true },
@@ -113,12 +125,21 @@ async function resolveRecipientIds(warehouseId: string | null): Promise<string[]
   const companyLevelIds = companyLevelUsers.map((u) => u.id);
 
   if (warehouseId === null) {
+    if (adminOnly) {
+      const adminUsers = await prisma.user.findMany({
+        where: { role: { in: ['ADMIN', 'COMPANY_ADMIN', 'SUPER_ADMIN'] } },
+        select: { id: true },
+      });
+      return adminUsers.map((u) => u.id);
+    }
     const allUsers = await prisma.user.findMany({ select: { id: true } });
     return allUsers.map((u) => u.id);
   }
 
+  // adminOnly: only that warehouse's own ADMIN ("Warehouse Admin") -- never
+  // its USER ("Warehouse Manager") staff -- plus company-level roles above.
   const warehouseUsers = await prisma.userWarehouse.findMany({
-    where: { warehouseId },
+    where: { warehouseId, ...(adminOnly ? { user: { role: 'ADMIN' } } : {}) },
     select: { userId: true },
   });
 
@@ -144,7 +165,7 @@ export async function createNotification(input: {
   });
 
   try {
-    const recipientIds = await resolveRecipientIds(input.warehouseId ?? null);
+    const recipientIds = await resolveRecipientIds(input.warehouseId ?? null, input.type);
     pushToUsers(recipientIds, {
       type: 'notification',
       id: notification.id,
