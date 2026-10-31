@@ -5,6 +5,7 @@ import type { AuthenticatedUser } from '@/middleware/authenticate';
 import { requireWarehouseId } from '@/utils/warehouseScope';
 import { checkLowStock } from '@/modules/inventory/inventory.service';
 import { createNotification } from '@/modules/notifications/notifications.service';
+import { logAudit } from '@/modules/audit/audit.service';
 import type { CreateEnquiryInput, EditEnquiryInput, ConfirmEnquiryInput } from './enquiries.validation';
 
 const ENQUIRY_INCLUDE = {
@@ -121,7 +122,7 @@ export async function listEnquiries(statusFilter?: 'OPEN' | 'FULFILLED' | 'ALL')
   return enquiries.map(toDto);
 }
 
-export async function createEnquiry(input: CreateEnquiryInput) {
+export async function createEnquiry(user: AuthenticatedUser, input: CreateEnquiryInput) {
   const product = await prisma.product.findUnique({ where: { id: input.productId } });
   if (!product) throw ApiError.notFound('Product not found.');
 
@@ -129,11 +130,12 @@ export async function createEnquiry(input: CreateEnquiryInput) {
     data: { productId: input.productId, quantity: input.quantity },
     include: ENQUIRY_INCLUDE,
   });
+  await logAudit({ user, action: 'CREATE', entityType: 'Enquiry', entityId: enquiry.id, entityLabel: `${product.name} x${input.quantity}`, payload: input });
   return toDto(enquiry);
 }
 
-export async function editEnquiry(id: string, input: EditEnquiryInput) {
-  const existing = await prisma.enquiry.findUnique({ where: { id } });
+export async function editEnquiry(user: AuthenticatedUser, id: string, input: EditEnquiryInput) {
+  const existing = await prisma.enquiry.findUnique({ where: { id }, include: ENQUIRY_INCLUDE });
   if (!existing) throw ApiError.notFound('Enquiry not found.');
   if (existing.status !== 'OPEN') throw ApiError.badRequest('Only an open enquiry can be edited.');
 
@@ -142,15 +144,17 @@ export async function editEnquiry(id: string, input: EditEnquiryInput) {
     data: { quantity: { increment: input.additionalQuantity } },
     include: ENQUIRY_INCLUDE,
   });
+  await logAudit({ user, action: 'UPDATE', entityType: 'Enquiry', entityId: id, entityLabel: existing.product.name, payload: input });
   return toDto(updated);
 }
 
-export async function deleteEnquiry(id: string) {
-  const existing = await prisma.enquiry.findUnique({ where: { id } });
+export async function deleteEnquiry(user: AuthenticatedUser, id: string) {
+  const existing = await prisma.enquiry.findUnique({ where: { id }, include: ENQUIRY_INCLUDE });
   if (!existing) throw ApiError.notFound('Enquiry not found.');
   if (existing.status !== 'OPEN') throw ApiError.badRequest('Only an open enquiry can be deleted.');
 
   await prisma.enquiry.delete({ where: { id } });
+  await logAudit({ user, action: 'DELETE', entityType: 'Enquiry', entityId: id, entityLabel: existing.product.name });
 }
 
 // Confirming an enquiry means the vendor has already agreed to supply, so the
@@ -300,6 +304,13 @@ export async function confirmEnquiry(user: AuthenticatedUser, id: string, input:
     message: `Sale ${sale.saleNumber} for ${customer.name} was confirmed.`,
     metadata: { saleId: sale.id, saleNumber: sale.saleNumber },
   });
+  // notify:false on all three -- the SALE_ISSUED notification above is the
+  // one user-facing ping for this whole compound action; still log each
+  // part (the enquiry confirmed, plus the purchase and sale it created)
+  // for the durable audit trail.
+  await logAudit({ user, action: 'UPDATE', entityType: 'Enquiry', entityId: id, entityLabel: `${enquiry.product.name} confirmed`, notify: false });
+  await logAudit({ user, action: 'CREATE', entityType: 'Purchase', entityId: purchase.id, entityLabel: purchase.purchaseNumber, notify: false });
+  await logAudit({ user, action: 'CREATE', entityType: 'Sale', entityId: sale.id, entityLabel: sale.saleNumber, notify: false });
 
   return {
     purchase: purchaseToDto(purchase),

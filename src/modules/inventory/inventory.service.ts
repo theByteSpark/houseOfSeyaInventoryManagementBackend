@@ -6,6 +6,7 @@ import type { AuthenticatedUser } from '@/middleware/authenticate';
 import { isCompanyLevel, requireWarehouseId } from '@/utils/warehouseScope';
 import { logger } from '@/utils/logger';
 import { createNotification } from '@/modules/notifications/notifications.service';
+import { logAudit } from '@/modules/audit/audit.service';
 import type { CategoryInput, ProductInput, RestockInput } from './inventory.validation';
 
 // Derives a SKU from the product name (e.g. "Cotton Poplin — Ivory" ->
@@ -222,6 +223,8 @@ export async function createProduct(user: AuthenticatedUser, input: ProductInput
     ]);
   }
 
+  await logAudit({ user, action: 'CREATE', entityType: 'Product', entityId: product.id, entityLabel: product.name, payload: input });
+
   return getProduct(user, product.id);
 }
 
@@ -247,10 +250,12 @@ export async function updateProduct(user: AuthenticatedUser, id: string, input: 
     },
   });
 
+  await logAudit({ user, action: 'UPDATE', entityType: 'Product', entityId: id, entityLabel: input.name, payload: input });
+
   return getProduct(user, id);
 }
 
-export async function deleteProduct(id: string) {
+export async function deleteProduct(user: AuthenticatedUser, id: string) {
   const product = await prisma.product.findUnique({
     where: { id },
     include: {
@@ -278,6 +283,8 @@ export async function deleteProduct(id: string) {
     prisma.productStock.deleteMany({ where: { productId: id } }),
     prisma.product.delete({ where: { id } }),
   ]);
+
+  await logAudit({ user, action: 'DELETE', entityType: 'Product', entityId: id, entityLabel: product.name });
 }
 
 export async function restockProduct(user: AuthenticatedUser, id: string, input: RestockInput) {
@@ -320,6 +327,14 @@ export async function restockProduct(user: AuthenticatedUser, id: string, input:
   ]);
 
   await checkLowStock(id, warehouseId);
+  await logAudit({
+    user,
+    action: 'UPDATE',
+    entityType: 'Product',
+    entityId: id,
+    entityLabel: `${product.name} stock ${isDecrease ? 'decreased' : 'increased'} by ${input.quantity}`,
+    payload: input,
+  });
 
   return getProduct(user, id);
 }

@@ -4,6 +4,7 @@ import { ApiError } from '@/utils/apiError';
 import type { AuthenticatedUser } from '@/middleware/authenticate';
 import { isCompanyLevel, requireWarehouseId } from '@/utils/warehouseScope';
 import { createSale } from '@/modules/sales/sales.service';
+import { logAudit } from '@/modules/audit/audit.service';
 import type {
   CreateBlockedQuantityInput,
   EditBlockedQuantityInput,
@@ -117,11 +118,20 @@ export async function createBlockedQuantity(user: AuthenticatedUser, input: Crea
         include: BLOCKED_QUANTITY_INCLUDE,
       });
 
+  await logAudit({
+    user,
+    action: 'CREATE',
+    entityType: 'BlockedQuantity',
+    entityId: blocked.id,
+    entityLabel: `${product.name} x${input.quantity}`,
+    payload: input,
+  });
+
   return toDto(blocked);
 }
 
 export async function editBlockedQuantity(user: AuthenticatedUser, id: string, input: EditBlockedQuantityInput) {
-  const existing = await prisma.blockedQuantity.findFirst({ where: { id, ...scopeWarehouseWhere(user) } });
+  const existing = await prisma.blockedQuantity.findFirst({ where: { id, ...scopeWarehouseWhere(user) }, include: BLOCKED_QUANTITY_INCLUDE });
   if (!existing) throw ApiError.notFound('Blocked quantity not found.');
   if (existing.status !== 'OPEN') throw ApiError.badRequest('Only an open blocked quantity can be edited.');
 
@@ -135,15 +145,17 @@ export async function editBlockedQuantity(user: AuthenticatedUser, id: string, i
     data: { quantity: { increment: input.additionalQuantity } },
     include: BLOCKED_QUANTITY_INCLUDE,
   });
+  await logAudit({ user, action: 'UPDATE', entityType: 'BlockedQuantity', entityId: id, entityLabel: existing.product.name, payload: input });
   return toDto(updated);
 }
 
 export async function deleteBlockedQuantity(user: AuthenticatedUser, id: string) {
-  const existing = await prisma.blockedQuantity.findFirst({ where: { id, ...scopeWarehouseWhere(user) } });
+  const existing = await prisma.blockedQuantity.findFirst({ where: { id, ...scopeWarehouseWhere(user) }, include: BLOCKED_QUANTITY_INCLUDE });
   if (!existing) throw ApiError.notFound('Blocked quantity not found.');
   if (existing.status !== 'OPEN') throw ApiError.badRequest('Only an open blocked quantity can be deleted.');
 
   await prisma.blockedQuantity.delete({ where: { id } });
+  await logAudit({ user, action: 'DELETE', entityType: 'BlockedQuantity', entityId: id, entityLabel: existing.product.name });
 }
 
 // Confirming a block registers the full blocked quantity as a real sale,
@@ -153,7 +165,7 @@ export async function deleteBlockedQuantity(user: AuthenticatedUser, id: string)
 // (it's advisory, same as an Enquiry), so this is the only point at which
 // stock actually moves.
 export async function confirmBlockedQuantity(user: AuthenticatedUser, id: string, input: ConfirmBlockedQuantityInput) {
-  const blocked = await prisma.blockedQuantity.findFirst({ where: { id, ...scopeWarehouseWhere(user) } });
+  const blocked = await prisma.blockedQuantity.findFirst({ where: { id, ...scopeWarehouseWhere(user) }, include: BLOCKED_QUANTITY_INCLUDE });
   if (!blocked) throw ApiError.notFound('Blocked quantity not found.');
   if (blocked.status !== 'OPEN') throw ApiError.badRequest('Blocked quantity is already confirmed or cancelled.');
 
@@ -167,6 +179,9 @@ export async function confirmBlockedQuantity(user: AuthenticatedUser, id: string
     where: { id },
     data: { status: 'CONFIRMED', saleId: sale.id },
   });
+  // notify:false -- createSale() above already raises its own SALE_ISSUED
+  // notification, which covers this whole confirm action for Admin.
+  await logAudit({ user, action: 'UPDATE', entityType: 'BlockedQuantity', entityId: id, entityLabel: `${blocked.product.name} confirmed`, notify: false });
 
   return sale;
 }

@@ -38,7 +38,7 @@ export async function updateProductHandler(req: Request, res: Response) {
 }
 
 export async function deleteProductHandler(req: Request, res: Response) {
-  await inventoryService.deleteProduct(requireParam(req, 'id'));
+  await inventoryService.deleteProduct(requireUser(req), requireParam(req, 'id'));
   res.status(204).send();
 }
 

@@ -6,6 +6,7 @@ import type { AuthenticatedUser } from '@/middleware/authenticate';
 import { isCompanyLevel, requireWarehouseId } from '@/utils/warehouseScope';
 import { addStockInTransaction, checkLowStock } from '@/modules/inventory/inventory.service';
 import { createNotification } from '@/modules/notifications/notifications.service';
+import { logAudit } from '@/modules/audit/audit.service';
 import type { PurchaseInput } from './purchases.validation';
 
 const PURCHASE_INCLUDE = {
@@ -175,6 +176,8 @@ export async function createPurchase(user: AuthenticatedUser, input: PurchaseInp
     include: PURCHASE_INCLUDE,
   });
 
+  await logAudit({ user, action: 'CREATE', entityType: 'Purchase', entityId: purchase.id, entityLabel: purchaseNumber, payload: input });
+
   return toDto(purchase);
 }
 
@@ -220,6 +223,8 @@ export async function updatePurchase(user: AuthenticatedUser, id: string, input:
     { timeout: 15000, maxWait: 15000 },
   );
 
+  await logAudit({ user, action: 'UPDATE', entityType: 'Purchase', entityId: id, entityLabel: existing.purchaseNumber, payload: input });
+
   return getPurchase(user, id);
 }
 
@@ -236,6 +241,14 @@ export async function markPurchaseInwardTransit(user: AuthenticatedUser, id: str
     where: { id },
     data: { status: 'INWARD_TRANSIT' },
     include: PURCHASE_INCLUDE,
+  });
+
+  await logAudit({
+    user,
+    action: 'UPDATE',
+    entityType: 'Purchase',
+    entityId: id,
+    entityLabel: `${purchase.purchaseNumber} marked inward transit`,
   });
 
   return toDto(updated);
@@ -284,6 +297,16 @@ export async function markPurchaseInStock(user: AuthenticatedUser, id: string) {
     message: `Purchase order ${purchase.purchaseNumber} is now in stock.`,
     metadata: { purchaseId: purchase.id, purchaseNumber: purchase.purchaseNumber },
   });
+  // notify:false -- the PURCHASE_RECEIVED notification above already covers
+  // this for Admin; still log it for the durable audit trail.
+  await logAudit({
+    user,
+    action: 'UPDATE',
+    entityType: 'Purchase',
+    entityId: id,
+    entityLabel: `${purchase.purchaseNumber} marked in stock`,
+    notify: false,
+  });
 
   return getPurchase(user, id);
 }
@@ -300,6 +323,14 @@ export async function cancelPurchase(user: AuthenticatedUser, id: string) {
     where: { id },
     data: { status: 'CANCELLED' },
     include: PURCHASE_INCLUDE,
+  });
+
+  await logAudit({
+    user,
+    action: 'UPDATE',
+    entityType: 'Purchase',
+    entityId: id,
+    entityLabel: `${purchase.purchaseNumber} cancelled`,
   });
 
   return toDto(updated);

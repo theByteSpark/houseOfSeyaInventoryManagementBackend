@@ -24,6 +24,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
   notificationReads   NotificationRead[]
   warehouseMapping    UserWarehouse?
+  auditLogs           AuditLog[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 }
@@ -56,6 +57,7 @@ model Warehouse {
   transfersTo   StockTransfer[] @relation("TransferTo")
   conversions   StockConversion[]
   blockedQuantities BlockedQuantity[]
+  auditLogs     AuditLog[]
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 }
@@ -306,6 +308,9 @@ enum NotificationType {
   PURCHASE_RECEIVED
   SALE_ISSUED
   SYSTEM
+  ACTIVITY_CREATE
+  ACTIVITY_UPDATE
+  ACTIVITY_DELETE
 }
 
 model Notification {
@@ -339,6 +344,38 @@ model NotificationRead {
 
   @@unique([notificationId, userId])
   @@index([userId])
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+// Durable record of every Create/Update/Delete a Warehouse Manager (Role.USER)
+// performs, kept independent of Notification -- notifications are an inbox
+// that gets marked read and scrolls away; this is the thing Admin can ask us
+// to go check in the DB later. Not exposed via any UI/route today -- queried
+// directly when needed. userName/userRole are snapshotted at write time so
+// the record stays meaningful even if the user is later renamed or removed.
+model AuditLog {
+  id          String      @id @default(uuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id])
+  userName    String
+  userRole    Role
+  warehouseId String?
+  warehouse   Warehouse?  @relation(fields: [warehouseId], references: [id])
+  action      AuditAction
+  entityType  String
+  entityId    String
+  entityLabel String
+  payload     Json?
+  createdAt   DateTime    @default(now())
+
+  @@index([userId])
+  @@index([warehouseId, createdAt])
+  @@index([entityType, entityId])
 }
 
 model Setting {

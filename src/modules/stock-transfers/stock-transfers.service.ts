@@ -1,7 +1,9 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/config/db';
 import { ApiError } from '@/utils/apiError';
+import type { AuthenticatedUser } from '@/middleware/authenticate';
 import { checkLowStock } from '@/modules/inventory/inventory.service';
+import { logAudit } from '@/modules/audit/audit.service';
 import type { CreateTransferInput } from './stock-transfers.validation';
 
 const TRANSFER_INCLUDE = {
@@ -35,7 +37,7 @@ export async function listTransfers() {
   return transfers.map(toDto);
 }
 
-export async function createTransfer(input: CreateTransferInput) {
+export async function createTransfer(user: AuthenticatedUser, input: CreateTransferInput) {
   const product = await prisma.product.findUnique({ where: { id: input.productId } });
   if (!product) throw ApiError.notFound('Product not found.');
 
@@ -100,6 +102,14 @@ export async function createTransfer(input: CreateTransferInput) {
   });
 
   await checkLowStock(input.productId, input.fromWarehouseId);
+  await logAudit({
+    user,
+    action: 'CREATE',
+    entityType: 'StockTransfer',
+    entityId: transfer.id,
+    entityLabel: `${transfer.quantity}x ${product.name}: ${fromWarehouse.name} -> ${toWarehouse.name}`,
+    payload: input,
+  });
 
   return toDto(transfer);
 }

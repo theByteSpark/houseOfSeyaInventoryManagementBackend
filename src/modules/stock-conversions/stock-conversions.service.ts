@@ -4,6 +4,7 @@ import { ApiError } from '@/utils/apiError';
 import type { AuthenticatedUser } from '@/middleware/authenticate';
 import { isCompanyLevel, requireWarehouseId } from '@/utils/warehouseScope';
 import { checkLowStock } from '@/modules/inventory/inventory.service';
+import { logAudit } from '@/modules/audit/audit.service';
 import type { CreateConversionInput } from './stock-conversions.validation';
 
 const CONVERSION_INCLUDE = {
@@ -107,6 +108,14 @@ export async function createConversion(user: AuthenticatedUser, input: CreateCon
   });
 
   await checkLowStock(input.fromProductId, warehouseId);
+  await logAudit({
+    user,
+    action: 'CREATE',
+    entityType: 'StockConversion',
+    entityId: conversion.id,
+    entityLabel: `${conversion.quantity}x ${fromProduct.name} -> ${toProduct.name}`,
+    payload: input,
+  });
 
   return toDto(conversion);
 }

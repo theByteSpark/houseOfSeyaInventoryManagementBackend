@@ -6,6 +6,7 @@ import type { AuthenticatedUser } from '@/middleware/authenticate';
 import { isCompanyLevel, requireWarehouseId } from '@/utils/warehouseScope';
 import { checkLowStock } from '@/modules/inventory/inventory.service';
 import { createNotification } from '@/modules/notifications/notifications.service';
+import { logAudit } from '@/modules/audit/audit.service';
 import type { SaleInput } from './sales.validation';
 
 // Tax is a flat rate across all products — not user-configurable per sale.
@@ -234,6 +235,8 @@ export async function createSale(user: AuthenticatedUser, input: SaleInput) {
     message: `Sale ${sale.saleNumber} for ${customer.name} was confirmed.`,
     metadata: { saleId: sale.id, saleNumber: sale.saleNumber },
   });
+  // notify:false -- the SALE_ISSUED notification above already covers this.
+  await logAudit({ user, action: 'CREATE', entityType: 'Sale', entityId: sale.id, entityLabel: saleNumber, payload: input, notify: false });
 
   return toDto(sale);
 }
@@ -335,6 +338,8 @@ export async function updateSale(user: AuthenticatedUser, id: string, input: Sal
     await checkLowStock(item.productId, warehouseId);
   }
 
+  await logAudit({ user, action: 'UPDATE', entityType: 'Sale', entityId: id, entityLabel: existing.saleNumber, payload: input });
+
   return getSale(user, id);
 }
 
@@ -348,6 +353,7 @@ export async function completeSale(user: AuthenticatedUser, id: string) {
   // completionDate is overwritten to the actual completion date rather than
   // kept at the original target, so it reflects when the sale really finished.
   await prisma.sale.update({ where: { id }, data: { status: 'DONE', completionDate: new Date() } });
+  await logAudit({ user, action: 'UPDATE', entityType: 'Sale', entityId: id, entityLabel: `${sale.saleNumber} marked done` });
   return getSale(user, id);
 }
 
@@ -384,6 +390,8 @@ export async function cancelSale(user: AuthenticatedUser, id: string) {
     },
     { timeout: 15000, maxWait: 15000 },
   );
+
+  await logAudit({ user, action: 'UPDATE', entityType: 'Sale', entityId: id, entityLabel: `${sale.saleNumber} cancelled` });
 
   return getSale(user, id);
 }
